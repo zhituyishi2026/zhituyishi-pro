@@ -812,13 +812,30 @@ def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matc
     返回：PDF字节流
     """
     try:
+        from reportlab.pdfbase import pdfmetrics
+        from reportlab.pdfbase.ttfonts import TTFont
+        import os
+        
+        # 注册中文字体（使用系统字体）
+        try:
+            # Windows 系统字体路径
+            font_path = "C:\\Windows\\Fonts\\simhei.ttf"
+            if os.path.exists(font_path):
+                pdfmetrics.registerFont(TTFont('SimHei', font_path))
+                chinese_font = 'SimHei'
+            else:
+                # 备用：使用 Helvetica
+                chinese_font = 'Helvetica'
+        except:
+            chinese_font = 'Helvetica'
+        
         buffer = io_module.BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.5*inch, bottomMargin=0.5*inch)
         
         story = []
         styles = getSampleStyleSheet()
         
-        # 自定义样式
+        # 自定义样式（支持中文）
         title_style = ParagraphStyle(
             'CustomTitle',
             parent=styles['Heading1'],
@@ -826,7 +843,7 @@ def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matc
             textColor=colors.HexColor('#1f77b4'),
             spaceAfter=30,
             alignment=TA_CENTER,
-            fontName='Helvetica-Bold'
+            fontName=chinese_font
         )
         
         heading_style = ParagraphStyle(
@@ -836,14 +853,20 @@ def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matc
             textColor=colors.HexColor('#1f77b4'),
             spaceAfter=12,
             spaceBefore=12,
-            fontName='Helvetica-Bold'
+            fontName=chinese_font
+        )
+        
+        normal_style = ParagraphStyle(
+            'CustomNormal',
+            parent=styles['Normal'],
+            fontName=chinese_font
         )
         
         # 封面
         story.append(Paragraph("智图忆市 分析报告", title_style))
         story.append(Spacer(1, 0.2*inch))
-        story.append(Paragraph(f"标的: {selected_stock}", styles['Normal']))
-        story.append(Paragraph(f"生成时间: {datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}", styles['Normal']))
+        story.append(Paragraph(f"标的: {selected_stock}", normal_style))
+        story.append(Paragraph(f"生成时间: {datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}", normal_style))
         story.append(Spacer(1, 0.3*inch))
         
         # 当前行情摘要
