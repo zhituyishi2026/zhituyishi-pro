@@ -877,89 +877,53 @@ def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma
 
 def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matches=None):
     """
-    生成PDF分析报告（简化版）
+    生成分析报告（文本格式）
     """
     try:
-        from reportlab.pdfgen import canvas as pdf_canvas
-        from reportlab.lib.pagesizes import letter
+        # 生成文本内容
+        report_text = f"""
+ZHITU YISHI - Analysis Report
+{'='*50}
+
+Stock: {selected_stock}
+Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+
+CURRENT MARKET
+{'='*50}
+Latest Price: {df.iloc[-1]['close']:.2f}
+Change: {(df.iloc[-1]['close'] - df.iloc[-2]['close']) / df.iloc[-2]['close'] * 100:+.2f}%
+High: {df.iloc[-1]['high']:.2f}
+Low: {df.iloc[-1]['low']:.2f}
+
+PATTERNS DETECTED
+{'='*50}
+"""
         
-        buffer = io_module.BytesIO()
-        c = pdf_canvas.Canvas(buffer, pagesize=letter)
-        width, height = letter
-        
-        # 标题
-        c.setFont("Helvetica-Bold", 20)
-        c.drawString(50, height - 50, "ZHITU YISHI - Analysis Report")
-        
-        # 基本信息
-        c.setFont("Helvetica", 12)
-        y = height - 100
-        c.drawString(50, y, f"Stock: {selected_stock}")
-        y -= 20
-        c.drawString(50, y, f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-        y -= 40
-        
-        # 当前行情
-        c.setFont("Helvetica-Bold", 14)
-        c.drawString(50, y, "Current Market")
-        y -= 20
-        
-        c.setFont("Helvetica", 11)
-        last_price = df.iloc[-1]['close']
-        prev_price = df.iloc[-2]['close'] if len(df) > 1 else last_price
-        change_pct = (last_price - prev_price) / prev_price * 100
-        
-        c.drawString(50, y, f"Latest Price: {last_price:.2f}")
-        y -= 15
-        c.drawString(50, y, f"Change: {change_pct:+.2f}%")
-        y -= 15
-        c.drawString(50, y, f"High: {df.iloc[-1]['high']:.2f}")
-        y -= 15
-        c.drawString(50, y, f"Low: {df.iloc[-1]['low']:.2f}")
-        y -= 40
-        
-        # 形态检测
-        c.setFont("Helvetica-Bold", 14)
-        c.drawString(50, y, "Patterns Detected")
-        y -= 20
-        
-        c.setFont("Helvetica", 11)
         if patterns:
-            pattern_count = len(patterns)
-            c.drawString(50, y, f"Total: {pattern_count} patterns")
-            y -= 15
-            for i, (name, info) in enumerate(list(patterns.items())[:5]):
-                c.drawString(50, y, f"  - {name}: {info.get('信号', 'N/A')}")
-                y -= 15
+            report_text += f"Total: {len(patterns)} patterns\n\n"
+            for name, info in list(patterns.items())[:10]:
+                report_text += f"- {name}: {info.get('信号', 'N/A')}\n"
         else:
-            c.drawString(50, y, "No patterns detected")
-        y -= 20
+            report_text += "No patterns detected\n"
         
-        # 免责声明
-        c.setFont("Helvetica-Bold", 12)
-        c.drawString(50, y, "Disclaimer")
-        y -= 15
+        report_text += f"""
+
+DISCLAIMER
+{'='*50}
+This tool is for research only. Not investment advice.
+Stock market has risks. Invest with caution.
+"""
         
-        c.setFont("Helvetica", 10)
-        c.drawString(50, y, "This tool is for research only. Not investment advice.")
-        y -= 15
-        c.drawString(50, y, "Stock market has risks. Invest with caution.")
+        # 转换为字节
+        report_bytes = report_text.encode('utf-8')
         
-        # 保存PDF
-        c.save()
-        
-        # 获取PDF内容
-        buffer.seek(0)
-        pdf_bytes = buffer.getvalue()
-        
-        if pdf_bytes and len(pdf_bytes) > 100:  # 至少100字节
-            return pdf_bytes
+        if report_bytes and len(report_bytes) > 0:
+            return report_bytes
         else:
-            st.error("PDF生成失败：内容为空")
             return None
         
     except Exception as e:
-        st.error(f"PDF generation failed: {str(e)}")
+        st.error(f"Report generation failed: {str(e)}")
         return None
 
 # ===================== 主程序 =====================
@@ -1208,13 +1172,13 @@ def main():
             
             if pdf_bytes:
                 st.download_button(
-                    "📥 下载PDF报告",
+                    "📥 下载分析报告",
                     pdf_bytes,
-                    f"智图忆市分析报告_{selected}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
-                    "application/pdf",
+                    f"智图忆市分析报告_{selected}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
+                    "text/plain",
                     key="download-pdf-report"
                 )
-                st.success("✅ PDF报告生成成功！")
+                st.success("✅ 报告生成成功！")
             else:
                 st.error("❌ PDF报告生成失败")
     
