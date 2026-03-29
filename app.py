@@ -945,11 +945,14 @@ def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matc
         y -= 15
         c.drawString(50, y, "Stock market has risks. Invest with caution.")
         
+        # 保存PDF
         c.save()
+        
+        # 获取PDF内容
         buffer.seek(0)
         pdf_bytes = buffer.getvalue()
         
-        if pdf_bytes and len(pdf_bytes) > 0:
+        if pdf_bytes and len(pdf_bytes) > 100:  # 至少100字节
             return pdf_bytes
         else:
             st.error("PDF生成失败：内容为空")
