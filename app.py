@@ -798,6 +798,34 @@ def show_backtest_results(backtest_result):
     )
 
 # ===================== PDF报告生成 =====================
+def show_stats_panel(matches, window, extend_days):
+    """显示统计面板"""
+    if not matches:
+        st.warning("未找到匹配数据")
+        return
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("历史匹配次数", f"{len(matches)} 次", f"窗口: {window}天")
+    
+    with col2:
+        returns_5d = [m.get("return_5d", 0) for m in matches]
+        avg_5d = np.mean(returns_5d) if returns_5d else 0
+        st.metric("5日平均收益", f"{avg_5d:+.2f}%", "↑" if avg_5d > 0 else "↓")
+    
+    with col3:
+        returns_10d = [m.get("return_10d", 0) for m in matches]
+        avg_10d = np.mean(returns_10d) if returns_10d else 0
+        st.metric("10日平均收益", f"{avg_10d:+.2f}%", "↑" if avg_10d > 0 else "↓")
+    
+    with col4:
+        returns_20d = [m.get("total_return", 0) for m in matches]
+        avg_20d = np.mean(returns_20d) if returns_20d else 0
+        up_count = sum(1 for r in returns_20d if r > 0)
+        win_rate = up_count / len(returns_20d) * 100 if returns_20d else 0
+        st.metric("上涨胜率", f"{win_rate:.0f}%", f"盈利 {up_count} 次 / {len(matches)} 次")
+
 def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma=True, show_vol=True, show_macd=True, title="K线图"):
     """绘制K线图表"""
     fig = make_subplots(
