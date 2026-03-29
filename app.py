@@ -880,11 +880,12 @@ def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matc
     生成PDF分析报告（简化版）
     """
     try:
-        from reportlab.pdfgen import canvas
+        from reportlab.pdfgen import canvas as pdf_canvas
+        from reportlab.lib.pagesizes import letter
         
         buffer = io_module.BytesIO()
-        c = canvas.Canvas(buffer, pagesize=A4)
-        width, height = A4
+        c = pdf_canvas.Canvas(buffer, pagesize=letter)
+        width, height = letter
         
         # 标题
         c.setFont("Helvetica-Bold", 20)
@@ -926,9 +927,13 @@ def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matc
         if patterns:
             pattern_count = len(patterns)
             c.drawString(50, y, f"Total: {pattern_count} patterns")
+            y -= 15
+            for i, (name, info) in enumerate(list(patterns.items())[:5]):
+                c.drawString(50, y, f"  - {name}: {info.get('信号', 'N/A')}")
+                y -= 15
         else:
             c.drawString(50, y, "No patterns detected")
-        y -= 40
+        y -= 20
         
         # 免责声明
         c.setFont("Helvetica-Bold", 12)
@@ -942,7 +947,13 @@ def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matc
         
         c.save()
         buffer.seek(0)
-        return buffer.getvalue()
+        pdf_bytes = buffer.getvalue()
+        
+        if pdf_bytes and len(pdf_bytes) > 0:
+            return pdf_bytes
+        else:
+            st.error("PDF生成失败：内容为空")
+            return None
         
     except Exception as e:
         st.error(f"PDF generation failed: {str(e)}")
