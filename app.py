@@ -1169,22 +1169,21 @@ def main():
         st.markdown("---")
         st.subheader("📄 生成分析报告")
         
-        if st.button("📄 生成PDF报告", use_container_width=True):
-            with st.spinner("正在生成PDF报告..."):
-                backtest_for_report = st.session_state.get("last_backtest", None)
-                pdf_bytes = generate_pdf_report(df, selected, patterns, backtest_for_report, matches)
+        if st.button("📄 生成分析报告", width='stretch'):
+            backtest_for_report = st.session_state.get("last_backtest", None)
+            report_bytes = generate_pdf_report(df, selected, patterns, backtest_for_report, matches)
             
-            if pdf_bytes:
+            if report_bytes and len(report_bytes) > 0:
                 st.download_button(
                     "📥 下载分析报告",
-                    pdf_bytes,
+                    report_bytes,
                     f"智图忆市分析报告_{selected}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
                     "text/plain",
-                    key="download-pdf-report"
+                    key="download-report"
                 )
                 st.success("✅ 报告生成成功！")
             else:
-                st.error("❌ PDF报告生成失败")
+                st.error("❌ 报告生成失败")
     
     else:
         # 初始界面
