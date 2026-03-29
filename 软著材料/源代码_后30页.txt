@@ -1,0 +1,1650 @@
+智图忆市K线形态分析系统V1.0                                                源代码
+第31页
+
+-796                              <p>置信度: {info['置信度']:.0%}</p>
+-795                              <p style="font-size:0.85rem; color:#666;">{info['描述']}</p>
+-794                          </div>
+-793                          """, unsafe_allow_html=True)
+-792              else:
+-791                  st.info("未检测到明确形态")
+-790          
+-789          # ===== 第三部分：形态匹配 =====
+-788          st.markdown("---")
+-787          st.subheader(f"🔎 历史相似形态匹配 (模板: 近 {pattern_days} 日 → 观察: 后 {extend_days} 日)")
+-786          
+-785          with st.spinner("正在匹配历史形态..."):
+-784              matches = find_similar_patterns(df, pattern_days, top_n)
+-783          
+-782          if matches:
+-781              show_stats_panel(matches, pattern_days, extend_days)
+-780              
+-779              # 每个匹配的详细K线图
+-778              st.markdown("---")
+-777              st.subheader(f"📈 Top {len(matches)} 相似形态详细走势")
+-776              
+-775              for i, m in enumerate(matches):
+-774                  start_idx = m["idx"]
+-773                  end_idx = start_idx + pattern_days + extend_days
+-772                  seg_df = df.iloc[start_idx:end_idx].copy()
+-771                  
+-770                  return_color = "up" if m["is_up"] else "down"
+-769                  return_icon = "📈" if m["is_up"] else "📉"
+-768                  
+-767                  with st.expander(f"{return_icon} 匹配 #{i+1} | {m['date'].strftime('%Y-%m-%d')} | 相似度: {m['similarity']:.2%} | 20日收益: <span class='{return_color}'>{m['total_return']:+.2f}%</span>", expanded=(i < 3)):
+-766                      fig_match = plot_kline_with_pattern(
+-765                          seg_df, pattern_days,
+-764                          match_date=m["date"], sim_score=m["similarity"],
+-763                          show_ma=show_ma, show_vol=show_vol, show_macd=show_macd,
+-762                          title=f"历史匹配 #{i+1}"
+-761                      )
+-760                      st.plotly_chart(fig_match, use_container_width=True)
+-759                      
+-758                      # 该匹配详细信息
+-757                      c1, c2, c3, c4 = st.columns(4)
+-756                      with c1:
+-755                          st.metric("5日收益", f"{m['return_5d']:+.2f}%")
+-754                      with c2:
+-753                          st.metric("10日收益", f"{m['return_10d']:+.2f}%")
+-752                      with c3:
+-751                          st.metric("20日收益", f"{m['total_return']:+.2f}%")
+-750                      with c4:
+-749                          st.metric("波动率", f"{m['volatility']:.2f}%")
+-748          else:
+-747              st.warning("未找到足够的匹配数据")
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第32页
+
+-746      
+-745      else:
+-744          # 初始界面
+-743          st.markdown("---")
+-742          col1, col2, col3 = st.columns(3)
+-741          with col1:
+-740              st.info("📊 **K线形态匹配**\n用最近N日走势，在历史上寻找相似形态")
+-739          with col2:
+-738              st.info("📐 **自动形态检测**\n智能识别双底、头肩顶、三角形等经典形态")
+-737          with col3:
+-736              st.info("📈 **概率统计分析**\n基于历史匹配计算上涨概率和预期收益")
+-735          
+-734          st.markdown("---")
+-733          st.markdown("""
+-732          ### 🚀 使用指南
+-731          
+-730          1. **选择标的** - 从左侧选择股票或指数
+-729          2. **设置参数** - 调整模板天数和观察天数
+-728          3. **开始分析** - 点击侧边栏按钮获取结果
+-727          4. **查看详情** - 点击展开查看每个匹配的详细走势
+-726          5. **导出数据** - 下载CSV进行进一步分析
+-725          
+-724          ### 💡 核心理念
+-723          
+-722          > "历史不会简单重复，但总押着韵脚"
+-721          
+-720          智图忆市通过量化相似形态的历史表现，为您的投资决策提供数据支持。
+-719          """)
+-718          
+-717          # 演示数据
+-716          if st.button("📊 查看演示效果"):
+-715              st.info("请先点击侧边栏「开始分析」按钮")
+-714      
+-713      # 页脚
+-712      st.markdown("---")
+-711      st.markdown(
+-710          "<p style='text-align:center; color:#888; font-size:0.8rem;'>"
+-709          "© 2026 智图忆市 | 数据来源: 新浪财经 / AKShare | 仅供学习研究"
+-708          "</p>",
+-707          unsafe_allow_html=True
+-706      )
+-705  
+-704  if __name__ == "__main__":
+-703      main()
+-702  """
+-701  智图忆市 v2.0 - K线形态匹配与量化分析平台
+-700  © 2026 智图忆市 保留所有权利
+-699  功能：形态匹配 / 形态检测 / 概率统计 / 策略回测 / 多标的对比
+-698  """
+-697  
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第33页
+
+-696  import streamlit as st
+-695  import pandas as pd
+-694  import numpy as np
+-693  import requests
+-692  import csv
+-691  import io
+-690  import time
+-689  import plotly.graph_objects as go
+-688  import plotly.express as px
+-687  from plotly.subplots import make_subplots
+-686  from scipy.spatial.distance import cosine
+-685  from datetime import datetime, timedelta
+-684  
+-683  # ===================== 页面设置 =====================
+-682  st.set_page_config(
+-681      page_title="智图忆市 Pro - K线形态量化分析",
+-680      page_icon="🎯",
+-679      layout="wide",
+-678      initial_sidebar_state="expanded"
+-677  )
+-676  
+-675  # ===================== 样式 =====================
+-674  st.markdown("""
+-673  <style>
+-672      .main-header {font-size:2rem; font-weight:700; color:#1f77b4; text-align:center;}
+-671      .sub-header {font-size:1.1rem; color:#666; text-align:center; margin-bottom:20px;}
+-670      .metric-card {background:#f0f7ff; padding:15px; border-radius:10px; border-left:4px solid #1f77b4;}
+-669      .match-card {background:#fffef0; padding:12px; border-radius:8px; margin:8px 0; border-left:4px solid #ffa500;}
+-668      .up {color:#e24a4a; font-weight:bold;}
+-667      .down {color:#2e7d32; font-weight:bold;}
+-666      .neutral {color:#888;}
+-665      .stDeployButton {display:none !important;}
+-664      footer {visibility:hidden;}
+-663  </style>
+-662  """, unsafe_allow_html=True)
+-661  
+-660  # ===================== 股票列表 =====================
+-659  STOCK_MAP = {
+-658      # 主要指数
+-657      "【指数】上证指数": "sh000001", "【指数】深证成指": "sz399001",
+-656      "【指数】创业板指": "sz399006", "【指数】科创50": "sh000688",
+-655      "【指数】沪深300": "sh000300", "【指数】中证500": "sh000905",
+-654      "【指数】上证50": "sh000016", "【指数】中证1000": "sh000852",
+-653      # 蓝筹
+-652      "【蓝筹】贵州茅台": "sh600519", "【蓝筹】宁德时代": "sz300750",
+-651      "【蓝筹】比亚迪": "sz002594", "【蓝筹】东方财富": "sz300059",
+-650      "【蓝筹】中国平安": "sh601318", "【蓝筹】招商银行": "sh600036",
+-649      "【蓝筹】五粮液": "sz000858", "【蓝筹】美的集团": "sz000333",
+-648      "【蓝筹】工商银行": "sh601398", "【蓝筹】农业银行": "sh601288",
+-647      "【蓝筹】中国石油": "sh601857", "【蓝筹】中国石化": "sh600028",
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第34页
+
+-646      # 科技
+-645      "【科技】海康威视": "sz002415", "【科技】中芯国际": "sh688981",
+-644      "【科技】寒武纪": "sh688256", "【科技】科大讯飞": "sz002230",
+-643      # 金融科技
+-642      "【金融科技】同花顺": "sz300033", "【金融科技】恒生电子": "sh600570",
+-641      "【金融科技】顶点软件": "sh603383",
+-640  }
+-639  
+-638  # ===================== 数据源 =====================
+-637  @st.cache_data(ttl=3600)
+-636  def get_sina_data(code, datalen=800):
+-635      """新浪行情接口"""
+-634      try:
+-633          url = f"https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData?symbol={code}&scale=240&datalen={datalen}"
+-632          r = requests.get(url, timeout=10)
+-631          data = r.json()
+-630          if not data:
+-629              return None, "新浪接口返回空数据"
+-628          df = pd.DataFrame(data)
+-627          df["date"] = pd.to_datetime(df["day"])
+-626          for col in ["open", "high", "low", "close", "volume"]:
+-625              df[col] = pd.to_numeric(df[col], errors="coerce")
+-624          df = df.dropna(subset=["close"]).sort_values("date").reset_index(drop=True)
+-623          return df, None
+-622      except Exception as e:
+-621          return None, str(e)
+-620  
+-619  @st.cache_data(ttl=3600)
+-618  def get_akshare_data(code, datalen=800):
+-617      """AKShare接口作为备选"""
+-616      try:
+-615          import akshare as ak
+-614          symbol = code
+-613          if code.startswith("sh"):
+-612              symbol = f"sh{code[2:]}"
+-611          elif code.startswith("sz"):
+-610              symbol = f"sz{code[2:]}"
+-609          
+-608          df = ak.stock_zh_a_hist(symbol=symbol[2:], period="daily", 
+-607                                    start_date=(datetime.now() - timedelta(days=datalen)).strftime("%Y%m%d"),
+-606                                    end_date=datetime.now().strftime("%Y%m%d"), adjust="hfq")
+-605          df["date"] = pd.to_datetime(df["日期"])
+-604          df = df.rename(columns={"开盘": "open", "最高": "high", "最低": "low", 
+-603                                   "收盘": "close", "成交量": "volume"})
+-602          df = df[["date", "open", "high", "low", "close", "volume"]].sort_values("date").reset_index(drop=True)
+-601          return df, None
+-600      except Exception as e:
+-599          return None, str(e)
+-598  
+-597  def get_stock_data(code, datalen=800):
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第35页
+
+-596      """双保险数据获取"""
+-595      df, err = get_sina_data(code, datalen)
+-594      if df is not None and len(df) > 50:
+-593          return df, "sina"
+-592      
+-591      df2, err2 = get_akshare_data(code, datalen)
+-590      if df2 is not None and len(df2) > 50:
+-589          return df2, "akshare"
+-588      
+-587      return None, f"新浪:{err} | AKShare:{err2}"
+-586  
+-585  # ===================== 技术指标 =====================
+-584  def add_indicators(df):
+-583      """计算技术指标"""
+-582      df = df.copy()
+-581      close = df["close"]
+-580      
+-579      # 均线
+-578      df["ma5"] = close.rolling(5).mean()
+-577      df["ma10"] = close.rolling(10).mean()
+-576      df["ma20"] = close.rolling(20).mean()
+-575      df["ma60"] = close.rolling(60).mean()
+-574      
+-573      # MACD
+-572      ema12 = close.ewm(span=12).mean()
+-571      ema26 = close.ewm(span=26).mean()
+-570      df["macd"] = ema12 - ema26
+-569      df["macd_signal"] = df["macd"].ewm(span=9).mean()
+-568      df["macd_hist"] = df["macd"] - df["macd_signal"]
+-567      
+-566      # RSI
+-565      delta = close.diff()
+-564      gain = delta.where(delta > 0, 0).rolling(14).mean()
+-563      loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+-562      rs = gain / (loss + 1e-8)
+-561      df["rsi"] = 100 - (100 / (rs + 1))
+-560      
+-559      # 成交量均线
+-558      df["vol_ma5"] = df["volume"].rolling(5).mean()
+-557      
+-556      return df
+-555  
+-554  # ===================== 形态检测 =====================
+-553  def detect_patterns(df, window=20):
+-552      """检测常见技术形态"""
+-551      if len(df) < window:
+-550          return {}
+-549      
+-548      recent = df.tail(window).copy()
+-547      close = recent["close"].values
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第36页
+
+-546      high = recent["high"].values
+-545      low = recent["low"].values
+-544      volume = recent["volume"].values
+-543      
+-542      patterns = {}
+-541      
+-540      # 1. 双底形态
+-539      try:
+-538          min_idx = np.argmin(low)
+-537          if min_idx > 3 and min_idx < window - 5:
+-536              left_low = low[:min_idx].min()
+-535              right_low = low[min_idx:].min()
+-534              left_high_after = high[:min_idx].max()
+-533              if abs(left_low - right_low) / (left_low + 1) < 0.02:  # 两底接近
+-532                  patterns["双底"] = {
+-531                      "置信度": 0.85,
+-530                      "描述": f"在 {window} 天窗口内形成双底结构，两低点差 < 2%",
+-529                      "信号": "看涨"
+-528                  }
+-527      except:
+-526          pass
+-525      
+-524      # 2. 双顶形态
+-523      try:
+-522          max_idx = np.argmax(high)
+-521          if max_idx > 3 and max_idx < window - 5:
+-520              left_high_val = high[:max_idx].max()
+-519              right_high_val = high[max_idx:].max()
+-518              if abs(left_high_val - right_high_val) / (left_high_val + 1) < 0.02:
+-517                  patterns["双顶"] = {
+-516                      "置信度": 0.85,
+-515                      "描述": f"在 {window} 天窗口内形成双顶结构，两高点差 < 2%",
+-514                      "信号": "看跌"
+-513                  }
+-512      except:
+-511          pass
+-510      
+-509      # 3. 三角形整理
+-508      try:
+-507          slope_high = (high[-1] - high[0]) / window
+-506          slope_low = (low[-1] - low[0]) / window
+-505          if abs(slope_high) < 0.01 and abs(slope_low) > 0.01 and slope_low > 0:
+-504              patterns["上升三角形"] = {
+-503                  "置信度": 0.75,
+-502                  "描述": "低点逐步抬高，高点横向整理，通常向上突破",
+-501                  "信号": "看涨"
+-500              }
+-499          elif abs(slope_low) < 0.01 and abs(slope_high) > 0.01 and slope_high < 0:
+-498              patterns["下降三角形"] = {
+-497                  "置信度": 0.75,
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第37页
+
+-496                  "描述": "高点逐步降低，低点横向整理，通常向下突破",
+-495                  "信号": "看跌"
+-494              }
+-493      except:
+-492          pass
+-491      
+-490      # 4. 均线多头排列
+-489      ma5 = recent["ma5"].values[-1] if "ma5" in recent.columns else 0
+-488      ma10 = recent["ma10"].values[-1] if "ma10" in recent.columns else 0
+-487      ma20 = recent["ma20"].values[-1] if "ma20" in recent.columns else 0
+-486      
+-485      if ma5 > ma10 > ma20 > 0:
+-484          patterns["均线多头"] = {
+-483              "置信度": 0.80,
+-482              "描述": "MA5 > MA10 > MA20，多头趋势强劲",
+-481              "信号": "看涨"
+-480          }
+-479      elif ma5 < ma10 < ma20:
+-478          patterns["均线空头"] = {
+-477              "置信度": 0.80,
+-476              "描述": "MA5 < MA10 < MA20，空头趋势明显",
+-475              "信号": "看跌"
+-474          }
+-473      
+-472      # 5. RSI 超买超卖
+-471      rsi = recent["rsi"].values[-1] if "rsi" in recent.columns else 50
+-470      if rsi < 30:
+-469          patterns["RSI超卖"] = {
+-468              "置信度": 0.70,
+-467              "描述": f"RSI = {rsi:.1f}，低于30，超卖区域",
+-466              "信号": "可能反弹"
+-465          }
+-464      elif rsi > 70:
+-463          patterns["RSI超买"] = {
+-462              "置信度": 0.70,
+-461              "描述": f"RSI = {rsi:.1f}，高于70，超买区域",
+-460              "信号": "可能回调"
+-459          }
+-458      
+-457      # 6. MACD 金叉死叉
+-456      if "macd" in recent.columns and "macd_signal" in recent.columns:
+-455          macd = recent["macd"].values
+-454          sig = recent["macd_signal"].values
+-453          if len(macd) >= 2:
+-452              if macd[-2] < sig[-2] and macd[-1] > sig[-1]:
+-451                  patterns["MACD金叉"] = {
+-450                      "置信度": 0.75,
+-449                      "描述": "MACD 从下方穿越信号线，看涨信号",
+-448                      "信号": "看涨"
+-447                  }
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第38页
+
+-446              elif macd[-2] > sig[-2] and macd[-1] < sig[-1]:
+-445                  patterns["MACD死叉"] = {
+-444                      "置信度": 0.75,
+-443                      "描述": "MACD 从上方穿越信号线，看跌信号",
+-442                      "信号": "看跌"
+-441                  }
+-440      
+-439      return patterns
+-438  
+-437  # ===================== 形态匹配核心 =====================
+-436  def normalize(series):
+-435      s = series.values.astype(float)
+-434      mn, mx = s.min(), s.max()
+-433      return (s - mn) / (mx - mn + 1e-8)
+-432  
+-431  def find_similar_patterns(df, window, top_n=10):
+-430      """滑动窗口匹配历史相似形态"""
+-429      prices = df["close"].values
+-428      n = len(prices)
+-427      template = normalize(pd.Series(prices[-window:]))
+-426      
+-425      results = []
+-424      for i in range(n - 2 * window):
+-423          seg = normalize(pd.Series(prices[i:i+window]))
+-422          sim = 1 - cosine(template, seg)
+-421          
+-420          # 计算后续走势
+-419          future_prices = prices[i+window : i+window+30] if i+window+30 <= n else prices[i+window:]
+-418          if len(future_prices) >= 5:
+-417              future_return = (future_prices[-1] - prices[i+window-1]) / (prices[i+window-1] + 1e-8) * 100
+-416              future_volatility = np.std(future_prices) / (np.mean(future_prices) + 1e-8) * 100
+-415              
+-414              # 计算持有不同天数的收益率
+-413              returns_5d = (future_prices[min(4, len(future_prices)-1)] - prices[i+window-1]) / (prices[i+window-1] + 1e-8) * 100 if len(future_prices) >= 5 else 0
+-412              returns_10d = (future_prices[min(9, len(future_prices)-1)] - prices[i+window-1]) / (prices[i+window-1] + 1e-8) * 100 if len(future_prices) >= 10 else 0
+-411              returns_20d = (future_prices[min(19, len(future_prices)-1)] - prices[i+window-1]) / (prices[i+window-1] + 1e-8) * 100 if len(future_prices) >= 20 else 0
+-410              
+-409              results.append({
+-408                  "idx": i,
+-407                  "similarity": sim,
+-406                  "date": df.iloc[i]["date"],
+-405                  "start_price": prices[i],
+-404                  "end_price": prices[i+window-1],
+-403                  "future_end_price": future_prices[-1],
+-402                  "return_5d": returns_5d,
+-401                  "return_10d": returns_10d,
+-400                  "return_20d": returns_20d,
+-399                  "total_return": future_return,
+-398                  "volatility": future_volatility,
+-397                  "is_up": future_return > 0
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第39页
+
+-396              })
+-395      
+-394      results.sort(key=lambda x: x["similarity"], reverse=True)
+-393      return results[:top_n]
+-392  
+-391  # ===================== K线绘图 =====================
+-390  def plot_kline_with_pattern(df_seg, window, match_date=None, sim_score=None, 
+-389                              show_ma=True, show_vol=True, show_macd=True, show_rsi=False,
+-388                              title=""):
+-387      """绘制专业K线图"""
+-386      df_plot = df_seg.copy()
+-385      
+-384      # 涨跌幅颜色
+-383      colors = ["#e24a4a" if df_plot.iloc[i]["close"] >= df_plot.iloc[i]["open"] else "#2e7d32" 
+-382                for i in range(len(df_plot))]
+-381      
+-380      fig = make_subplots(
+-379          rows=3 if show_macd else 2,
+-378          cols=1,
+-377          shared_xaxes=True,
+-376          vertical_spacing=0.05,
+-375          row_heights=[0.6, 0.2, 0.2] if show_macd else [0.75, 0.25],
+-374          subplot_titles=("", "成交量", "MACD") if show_macd else ("", "成交量")
+-373      )
+-372      
+-371      # K线
+-370      fig.add_trace(go.Candlestick(
+-369          x=df_plot["date"],
+-368          open=df_plot["open"],
+-367          high=df_plot["high"],
+-366          low=df_plot["low"],
+-365          close=df_plot["close"],
+-364          increasing_line_color="#e24a4a",
+-363          decreasing_line_color="#2e7d32",
+-362          name="K线"
+-361      ), row=1, col=1)
+-360      
+-359      # 均线
+-358      if show_ma and "ma5" in df_plot.columns:
+-357          fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["ma5"], 
+-356                                    line=dict(color="#ff9800", width=1), name="MA5"), row=1, col=1)
+-355          fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["ma10"], 
+-354                                    line=dict(color="#2196f3", width=1), name="MA10"), row=1, col=1)
+-353          fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["ma20"], 
+-352                                    line=dict(color="#9c27b0", width=1), name="MA20"), row=1, col=1)
+-351      
+-350      # 匹配区域标记
+-349      if window > 0 and len(df_plot) > window:
+-348          fig.add_vrect(
+-347              x0=df_plot.iloc[window]["date"], x1=df_plot.iloc[-1]["date"],
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第40页
+
+-346              fillcolor="rgba(255, 165, 0, 0.1)",
+-345              line_width=0,
+-344              row="all", col=1
+-343          )
+-342          fig.add_vline(
+-341              x=df_plot.iloc[window]["date"],
+-340              line_dash="dash", line_color="#ffa500", line_width=2,
+-339              row="all", col=1
+-338          )
+-337      
+-336      # 成交量
+-335      if show_vol:
+-334          colors_vol = ["#e24a4a" if df_plot.iloc[i]["close"] >= df_plot.iloc[i]["open"] else "#2e7d32"
+-333                        for i in range(len(df_plot))]
+-332          fig.add_trace(go.Bar(x=df_plot["date"], y=df_plot["volume"],
+-331                                marker_color=colors_vol, name="成交量",
+-330                                hovertemplate="成交量: %{y:,.0f}<extra></extra>"), row=2, col=1)
+-329          if "vol_ma5" in df_plot.columns:
+-328              fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["vol_ma5"],
+-327                                       line=dict(color="#ff9800", width=1), name="Vol MA5"), row=2, col=1)
+-326      
+-325      # MACD
+-324      if show_macd and "macd" in df_plot.columns:
+-323          colors_macd = ["#e24a4a" if v >= 0 else "#2e7d32" for v in df_plot["macd_hist"]]
+-322          fig.add_trace(go.Bar(x=df_plot["date"], y=df_plot["macd_hist"],
+-321                               marker_color=colors_macd, name="MACD柱"), row=3, col=1)
+-320          fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["macd"],
+-319                                   line=dict(color="#1f77b4", width=1), name="DIF"), row=3, col=1)
+-318          fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["macd_signal"],
+-317                                   line=dict(color="#ff5722", width=1), name="DEA"), row=3, col=1)
+-316      
+-315      # 标题
+-314      title_text = title
+-313      if match_date:
+-312          title_text += f" | 匹配日: {match_date.strftime('%Y-%m-%d')}"
+-311      if sim_score:
+-310          title_text += f" | 相似度: {sim_score:.2%}"
+-309      
+-308      fig.update_layout(
+-307          title=dict(text=title_text, font=dict(size=14)),
+-306          template="plotly_white",
+-305          height=500 if show_macd else 400,
+-304          showlegend=True,
+-303          legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+-302          xaxis_rangeslider_visible=False,
+-301          hovermode="x unified"
+-300      )
+-299      
+-298      return fig
+-297  
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第41页
+
+-296  # ===================== 统计面板 =====================
+-295  def show_stats_panel(matches, window, extend_days):
+-294      """显示统计面板"""
+-293      if not matches:
+-292          return
+-291      
+-290      up_count = sum(1 for m in matches if m["is_up"])
+-289      total = len(matches)
+-288      win_rate = up_count / total * 100
+-287      
+-286      avg_return_5d = np.mean([m["return_5d"] for m in matches])
+-285      avg_return_10d = np.mean([m["return_10d"] for m in matches])
+-284      avg_return_20d = np.mean([m["return_20d"] for m in matches])
+-283      avg_total = np.mean([m["total_return"] for m in matches])
+-282      avg_vol = np.mean([m["volatility"] for m in matches])
+-281      
+-280      col1, col2, col3, col4, col5 = st.columns(5)
+-279      
+-278      with col1:
+-277          st.metric("历史匹配次数", f"{total} 次", f"窗口: {window}天")
+-276      with col2:
+-275          color = "up" if avg_return_5d > 0 else "down"
+-274          st.metric("5日平均收益", f"{avg_return_5d:+.2f}%", 
+-273                    "↑" if avg_return_5d > 0 else "↓")
+-272      with col3:
+-271          st.metric("10日平均收益", f"{avg_return_10d:+.2f}%",
+-270                    "↑" if avg_return_10d > 0 else "↓")
+-269      with col4:
+-268          st.metric("20日平均收益", f"{avg_return_20d:+.2f}%",
+-267                    "↑" if avg_return_20d > 0 else "↓")
+-266      with col5:
+-265          st.metric("上涨胜率", f"{win_rate:.0f}%", 
+-264                    f"盈利 {up_count} 次 / {total} 次")
+-263      
+-262      # 收益分布图
+-261      st.subheader("📊 历史匹配后续走势分布")
+-260      
+-259      col_left, col_right = st.columns([1, 1])
+-258      
+-257      with col_left:
+-256          # 各持有期收益分布
+-255          returns_data = {
+-254              "持有期": ["5日", "10日", "20日", f"{extend_days}日"],
+-253              "平均收益": [avg_return_5d, avg_return_10d, avg_return_20d, avg_total]
+-252          }
+-251          fig_bar = px.bar(
+-250              x=returns_data["持有期"], 
+-249              y=returns_data["平均收益"],
+-248              color=returns_data["平均收益"],
+-247              color_continuous_scale=["#2e7d32", "#e24a4a"],
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第42页
+
+-246              title="不同持有期平均收益(%)"
+-245          )
+-244          fig_bar.update_layout(showlegend=False, height=300)
+-243          fig_bar.update_yaxes(title="收益(%)")
+-242          st.plotly_chart(fig_bar, use_container_width=True)
+-241      
+-240      with col_right:
+-239          # 收益分布直方图
+-238          fig_hist = px.histogram(
+-237              x=[m["total_return"] for m in matches],
+-236              nbins=20,
+-235              title="20日收益分布直方图",
+-234              labels={"x": "收益(%)", "y": "次数"}
+-233          )
+-232          fig_hist.add_vline(x=0, line_dash="dash", line_color="gray")
+-231          fig_hist.add_vline(x=avg_total, line_dash="solid", line_color="#1f77b4",
+-230                            annotation_text=f"均值: {avg_total:.1f}%")
+-229          fig_hist.update_layout(height=300, showlegend=False)
+-228          st.plotly_chart(fig_hist, use_container_width=True)
+-227      
+-226      # 详细匹配表
+-225      st.subheader(f"📋 Top {len(matches)} 相似形态详情")
+-224      
+-223      detail_df = pd.DataFrame([{
+-222          "序号": i+1,
+-221          "匹配日期": m["date"].strftime("%Y-%m-%d"),
+-220          "相似度": f"{m['similarity']:.2%}",
+-219          "5日收益": f"{m['return_5d']:+.2f}%",
+-218          "10日收益": f"{m['return_10d']:+.2f}%",
+-217          "20日收益": f"{m['total_return']:+.2f}%",
+-216          "波动率": f"{m['volatility']:.2f}%",
+-215          "结果": "✅ 上涨" if m["is_up"] else "❌ 下跌"
+-214      } for i, m in enumerate(matches)])
+-213      
+-212      st.dataframe(detail_df, use_container_width=True, hide_index=True)
+-211      
+-210      # 导出CSV
+-209      csv_data = detail_df.to_csv(index=False).encode("utf-8-sig")
+-208      st.download_button(
+-207          "📥 导出结果为CSV",
+-206          csv_data,
+-205          f"形态匹配结果_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+-204          "text/csv",
+-203          key="download-csv"
+-202      )
+-201  
+-200  # ===================== 主界面 =====================
+-199  def main():
+-198      # 标题
+-197      st.markdown('<p class="main-header">🎯 智图忆市 Pro</p>', unsafe_allow_html=True)
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第43页
+
+-196      st.markdown('<p class="sub-header">K线形态量化分析 · 历史相似匹配 · 概率统计决策</p>', unsafe_allow_html=True)
+-195      
+-194      # 免责声明
+-193      st.warning("⚠️  本工具仅供学习复盘研究，不构成任何投资建议。股市有风险，投资需谨慎。")
+-192      
+-191      # 侧边栏
+-190      with st.sidebar:
+-189          st.header("⚙️ 分析设置")
+-188          
+-187          # 标的
+-186          st.subheader("📊 选择标的")
+-185          selected = st.selectbox("股票/指数", list(STOCK_MAP.keys()), label_visibility="collapsed")
+-184          code = STOCK_MAP[selected]
+-183          
+-182          st.subheader("🔧 形态匹配设置")
+-181          pattern_days = st.slider("模板窗口天数", 5, 60, 20, help="选取最近多少根K线作为匹配模板")
+-180          extend_days = st.slider("后续观察天数", 5, 60, 20, help="匹配后观察多少天的走势")
+-179          top_n = st.slider("匹配数量", 3, 20, 10, help="显示最相似的多少个历史形态")
+-178          max_history = st.slider("历史数据量", 300, 1000, 800, help="从过去多少天开始搜索")
+-177          
+-176          st.subheader("📐 图表设置")
+-175          show_ma = st.checkbox("显示均线 (MA5/10/20)", True)
+-174          show_vol = st.checkbox("显示成交量", True)
+-173          show_macd = st.checkbox("显示MACD", True)
+-172          
+-171          st.subheader("🔍 形态检测")
+-170          detect_pattern = st.checkbox("自动检测常见形态", True)
+-169          
+-168          find_btn = st.button("🔍 开始分析", type="primary", use_container_width=True)
+-167      
+-166      # 主内容
+-165      if find_btn or "last_code" in st.session_state:
+-164          if find_btn:
+-163              st.session_state["last_code"] = code
+-162              st.session_state["last_pattern"] = pattern_days
+-161              st.session_state["last_extend"] = extend_days
+-160              st.session_state["last_top_n"] = top_n
+-159              st.session_state["last_max_history"] = max_history
+-158          
+-157          code = st.session_state.get("last_code", code)
+-156          pattern_days = st.session_state.get("last_pattern", pattern_days)
+-155          extend_days = st.session_state.get("last_extend", extend_days)
+-154          top_n = st.session_state.get("last_top_n", top_n)
+-153          max_history = st.session_state.get("last_max_history", max_history)
+-152          
+-151          with st.spinner("正在获取数据..."):
+-150              df, source = get_stock_data(code, max_history)
+-149          
+-148          if df is None or len(df) < 100:
+-147              st.error(f"❌ 数据获取失败，请稍后重试。代码: {code}")
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第44页
+
+-146              return
+-145          
+-144          st.success(f"✅ 数据加载成功 [{source.upper()}] 共 {len(df)} 根日K线 | {df['date'].min().strftime('%Y-%m-%d')} ~ {df['date'].max().strftime('%Y-%m-%d')}")
+-143          
+-142          # 添加指标
+-141          df = add_indicators(df)
+-140          
+-139          # ===== 第一部分：当前行情 =====
+-138          st.markdown("---")
+-137          st.subheader(f"📌 当前行情: {selected}")
+-136          
+-135          col_info1, col_info2, col_info3, col_info4 = st.columns(4)
+-134          last = df.iloc[-1]
+-133          prev = df.iloc[-2] if len(df) > 1 else last
+-132          
+-131          price = last["close"]
+-130          change = price - prev["close"]
+-129          change_pct = change / prev["close"] * 100
+-128          
+-127          with col_info1:
+-126              st.metric("最新价", f"{price:.2f}", f"{change:+.2f} ({change_pct:+.2f}%)")
+-125          with col_info2:
+-124              st.metric("最高价", f"{last['high']:.2f}")
+-123          with col_info3:
+-122              st.metric("最低价", f"{last['low']:.2f}")
+-121          with col_info4:
+-120              vol_ratio = last["volume"] / df["vol_ma5"].iloc[-1] if df["vol_ma5"].iloc[-1] > 0 else 1
+-119              st.metric("量比", f"{vol_ratio:.2f}x", "较5日均量")
+-118          
+-117          # 当前K线图
+-116          fig_current = plot_kline_with_pattern(
+-115              df.tail(80), 0,
+-114              show_ma=show_ma, show_vol=show_vol, show_macd=show_macd,
+-113              title=f"{selected} - 近80日K线"
+-112          )
+-111          st.plotly_chart(fig_current, use_container_width=True)
+-110          
+-109          # ===== 第二部分：形态检测 =====
+-108          if detect_pattern:
+-107              st.markdown("---")
+-106              st.subheader("🔍 当前形态检测")
+-105              
+-104              patterns = detect_patterns(df, window=pattern_days)
+-103              
+-102              if patterns:
+-101                  cols = st.columns(min(len(patterns), 4))
+-100                  for i, (name, info) in enumerate(patterns.items()):
+ -99                      with cols[i % 4]:
+ -98                          signal_color = "up" if "看涨" in info["信号"] else "down"
+ -97                          st.markdown(f"""
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第45页
+
+ -96                          <div class="match-card">
+ -95                              <h4>{name}</h4>
+ -94                              <p class="{signal_color}">信号: {info['信号']}</p>
+ -93                              <p>置信度: {info['置信度']:.0%}</p>
+ -92                              <p style="font-size:0.85rem; color:#666;">{info['描述']}</p>
+ -91                          </div>
+ -90                          """, unsafe_allow_html=True)
+ -89              else:
+ -88                  st.info("未检测到明确形态")
+ -87          
+ -86          # ===== 第三部分：形态匹配 =====
+ -85          st.markdown("---")
+ -84          st.subheader(f"🔎 历史相似形态匹配 (模板: 近 {pattern_days} 日 → 观察: 后 {extend_days} 日)")
+ -83          
+ -82          with st.spinner("正在匹配历史形态..."):
+ -81              matches = find_similar_patterns(df, pattern_days, top_n)
+ -80          
+ -79          if matches:
+ -78              show_stats_panel(matches, pattern_days, extend_days)
+ -77              
+ -76              # 每个匹配的详细K线图
+ -75              st.markdown("---")
+ -74              st.subheader(f"📈 Top {len(matches)} 相似形态详细走势")
+ -73              
+ -72              for i, m in enumerate(matches):
+ -71                  start_idx = m["idx"]
+ -70                  end_idx = start_idx + pattern_days + extend_days
+ -69                  seg_df = df.iloc[start_idx:end_idx].copy()
+ -68                  
+ -67                  return_color = "up" if m["is_up"] else "down"
+ -66                  return_icon = "📈" if m["is_up"] else "📉"
+ -65                  
+ -64                  with st.expander(f"{return_icon} 匹配 #{i+1} | {m['date'].strftime('%Y-%m-%d')} | 相似度: {m['similarity']:.2%} | 20日收益: <span class='{return_color}'>{m['total_return']:+.2f}%</span>", expanded=(i < 3)):
+ -63                      fig_match = plot_kline_with_pattern(
+ -62                          seg_df, pattern_days,
+ -61                          match_date=m["date"], sim_score=m["similarity"],
+ -60                          show_ma=show_ma, show_vol=show_vol, show_macd=show_macd,
+ -59                          title=f"历史匹配 #{i+1}"
+ -58                      )
+ -57                      st.plotly_chart(fig_match, use_container_width=True)
+ -56                      
+ -55                      # 该匹配详细信息
+ -54                      c1, c2, c3, c4 = st.columns(4)
+ -53                      with c1:
+ -52                          st.metric("5日收益", f"{m['return_5d']:+.2f}%")
+ -51                      with c2:
+ -50                          st.metric("10日收益", f"{m['return_10d']:+.2f}%")
+ -49                      with c3:
+ -48                          st.metric("20日收益", f"{m['total_return']:+.2f}%")
+ -47                      with c4:
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第46页
+
+ -46                          st.metric("波动率", f"{m['volatility']:.2f}%")
+ -45          else:
+ -44              st.warning("未找到足够的匹配数据")
+ -43      
+ -42      else:
+ -41          # 初始界面
+ -40          st.markdown("---")
+ -39          col1, col2, col3 = st.columns(3)
+ -38          with col1:
+ -37              st.info("📊 **K线形态匹配**\n用最近N日走势，在历史上寻找相似形态")
+ -36          with col2:
+ -35              st.info("📐 **自动形态检测**\n智能识别双底、头肩顶、三角形等经典形态")
+ -34          with col3:
+ -33              st.info("📈 **概率统计分析**\n基于历史匹配计算上涨概率和预期收益")
+ -32          
+ -31          st.markdown("---")
+ -30          st.markdown("""
+ -29          ### 🚀 使用指南
+ -28          
+ -27          1. **选择标的** - 从左侧选择股票或指数
+ -26          2. **设置参数** - 调整模板天数和观察天数
+ -25          3. **开始分析** - 点击侧边栏按钮获取结果
+ -24          4. **查看详情** - 点击展开查看每个匹配的详细走势
+ -23          5. **导出数据** - 下载CSV进行进一步分析
+ -22          
+ -21          ### 💡 核心理念
+ -20          
+ -19          > "历史不会简单重复，但总押着韵脚"
+ -18          
+ -17          智图忆市通过量化相似形态的历史表现，为您的投资决策提供数据支持。
+ -16          """)
+ -15          
+ -14          # 演示数据
+ -13          if st.button("📊 查看演示效果"):
+ -12              st.info("请先点击侧边栏「开始分析」按钮")
+ -11      
+ -10      # 页脚
+  -9      st.markdown("---")
+  -8      st.markdown(
+  -7          "<p style='text-align:center; color:#888; font-size:0.8rem;'>"
+  -6          "© 2026 智图忆市 | 数据来源: 新浪财经 / AKShare | 仅供学习研究"
+  -5          "</p>",
+  -4          unsafe_allow_html=True
+  -3      )
+  -2  
+  -1  if __name__ == "__main__":
+   0      main()
+   1  """
+   2  智图忆市 v2.0 - K线形态匹配与量化分析平台
+   3  © 2026 智图忆市 保留所有权利
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第47页
+
+   4  功能：形态匹配 / 形态检测 / 概率统计 / 策略回测 / 多标的对比
+   5  """
+   6  
+   7  import streamlit as st
+   8  import pandas as pd
+   9  import numpy as np
+  10  import requests
+  11  import csv
+  12  import io
+  13  import time
+  14  import plotly.graph_objects as go
+  15  import plotly.express as px
+  16  from plotly.subplots import make_subplots
+  17  from scipy.spatial.distance import cosine
+  18  from datetime import datetime, timedelta
+  19  
+  20  # ===================== 页面设置 =====================
+  21  st.set_page_config(
+  22      page_title="智图忆市 Pro - K线形态量化分析",
+  23      page_icon="🎯",
+  24      layout="wide",
+  25      initial_sidebar_state="expanded"
+  26  )
+  27  
+  28  # ===================== 样式 =====================
+  29  st.markdown("""
+  30  <style>
+  31      .main-header {font-size:2rem; font-weight:700; color:#1f77b4; text-align:center;}
+  32      .sub-header {font-size:1.1rem; color:#666; text-align:center; margin-bottom:20px;}
+  33      .metric-card {background:#f0f7ff; padding:15px; border-radius:10px; border-left:4px solid #1f77b4;}
+  34      .match-card {background:#fffef0; padding:12px; border-radius:8px; margin:8px 0; border-left:4px solid #ffa500;}
+  35      .up {color:#e24a4a; font-weight:bold;}
+  36      .down {color:#2e7d32; font-weight:bold;}
+  37      .neutral {color:#888;}
+  38      .stDeployButton {display:none !important;}
+  39      footer {visibility:hidden;}
+  40  </style>
+  41  """, unsafe_allow_html=True)
+  42  
+  43  # ===================== 股票列表 =====================
+  44  STOCK_MAP = {
+  45      # 主要指数
+  46      "【指数】上证指数": "sh000001", "【指数】深证成指": "sz399001",
+  47      "【指数】创业板指": "sz399006", "【指数】科创50": "sh000688",
+  48      "【指数】沪深300": "sh000300", "【指数】中证500": "sh000905",
+  49      "【指数】上证50": "sh000016", "【指数】中证1000": "sh000852",
+  50      # 蓝筹
+  51      "【蓝筹】贵州茅台": "sh600519", "【蓝筹】宁德时代": "sz300750",
+  52      "【蓝筹】比亚迪": "sz002594", "【蓝筹】东方财富": "sz300059",
+  53      "【蓝筹】中国平安": "sh601318", "【蓝筹】招商银行": "sh600036",
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第48页
+
+  54      "【蓝筹】五粮液": "sz000858", "【蓝筹】美的集团": "sz000333",
+  55      "【蓝筹】工商银行": "sh601398", "【蓝筹】农业银行": "sh601288",
+  56      "【蓝筹】中国石油": "sh601857", "【蓝筹】中国石化": "sh600028",
+  57      # 科技
+  58      "【科技】海康威视": "sz002415", "【科技】中芯国际": "sh688981",
+  59      "【科技】寒武纪": "sh688256", "【科技】科大讯飞": "sz002230",
+  60      # 金融科技
+  61      "【金融科技】同花顺": "sz300033", "【金融科技】恒生电子": "sh600570",
+  62      "【金融科技】顶点软件": "sh603383",
+  63  }
+  64  
+  65  # ===================== 数据源 =====================
+  66  @st.cache_data(ttl=3600)
+  67  def get_sina_data(code, datalen=800):
+  68      """新浪行情接口"""
+  69      try:
+  70          url = f"https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData?symbol={code}&scale=240&datalen={datalen}"
+  71          r = requests.get(url, timeout=10)
+  72          data = r.json()
+  73          if not data:
+  74              return None, "新浪接口返回空数据"
+  75          df = pd.DataFrame(data)
+  76          df["date"] = pd.to_datetime(df["day"])
+  77          for col in ["open", "high", "low", "close", "volume"]:
+  78              df[col] = pd.to_numeric(df[col], errors="coerce")
+  79          df = df.dropna(subset=["close"]).sort_values("date").reset_index(drop=True)
+  80          return df, None
+  81      except Exception as e:
+  82          return None, str(e)
+  83  
+  84  @st.cache_data(ttl=3600)
+  85  def get_akshare_data(code, datalen=800):
+  86      """AKShare接口作为备选"""
+  87      try:
+  88          import akshare as ak
+  89          symbol = code
+  90          if code.startswith("sh"):
+  91              symbol = f"sh{code[2:]}"
+  92          elif code.startswith("sz"):
+  93              symbol = f"sz{code[2:]}"
+  94          
+  95          df = ak.stock_zh_a_hist(symbol=symbol[2:], period="daily", 
+  96                                    start_date=(datetime.now() - timedelta(days=datalen)).strftime("%Y%m%d"),
+  97                                    end_date=datetime.now().strftime("%Y%m%d"), adjust="hfq")
+  98          df["date"] = pd.to_datetime(df["日期"])
+  99          df = df.rename(columns={"开盘": "open", "最高": "high", "最低": "low", 
+ 100                                   "收盘": "close", "成交量": "volume"})
+ 101          df = df[["date", "open", "high", "low", "close", "volume"]].sort_values("date").reset_index(drop=True)
+ 102          return df, None
+ 103      except Exception as e:
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第49页
+
+ 104          return None, str(e)
+ 105  
+ 106  def get_stock_data(code, datalen=800):
+ 107      """双保险数据获取"""
+ 108      df, err = get_sina_data(code, datalen)
+ 109      if df is not None and len(df) > 50:
+ 110          return df, "sina"
+ 111      
+ 112      df2, err2 = get_akshare_data(code, datalen)
+ 113      if df2 is not None and len(df2) > 50:
+ 114          return df2, "akshare"
+ 115      
+ 116      return None, f"新浪:{err} | AKShare:{err2}"
+ 117  
+ 118  # ===================== 技术指标 =====================
+ 119  def add_indicators(df):
+ 120      """计算技术指标"""
+ 121      df = df.copy()
+ 122      close = df["close"]
+ 123      
+ 124      # 均线
+ 125      df["ma5"] = close.rolling(5).mean()
+ 126      df["ma10"] = close.rolling(10).mean()
+ 127      df["ma20"] = close.rolling(20).mean()
+ 128      df["ma60"] = close.rolling(60).mean()
+ 129      
+ 130      # MACD
+ 131      ema12 = close.ewm(span=12).mean()
+ 132      ema26 = close.ewm(span=26).mean()
+ 133      df["macd"] = ema12 - ema26
+ 134      df["macd_signal"] = df["macd"].ewm(span=9).mean()
+ 135      df["macd_hist"] = df["macd"] - df["macd_signal"]
+ 136      
+ 137      # RSI
+ 138      delta = close.diff()
+ 139      gain = delta.where(delta > 0, 0).rolling(14).mean()
+ 140      loss = (-delta.where(delta < 0, 0)).rolling(14).mean()
+ 141      rs = gain / (loss + 1e-8)
+ 142      df["rsi"] = 100 - (100 / (rs + 1))
+ 143      
+ 144      # 成交量均线
+ 145      df["vol_ma5"] = df["volume"].rolling(5).mean()
+ 146      
+ 147      return df
+ 148  
+ 149  # ===================== 形态检测 =====================
+ 150  def detect_patterns(df, window=20):
+ 151      """检测常见技术形态"""
+ 152      if len(df) < window:
+ 153          return {}
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第50页
+
+ 154      
+ 155      recent = df.tail(window).copy()
+ 156      close = recent["close"].values
+ 157      high = recent["high"].values
+ 158      low = recent["low"].values
+ 159      volume = recent["volume"].values
+ 160      
+ 161      patterns = {}
+ 162      
+ 163      # 1. 双底形态
+ 164      try:
+ 165          min_idx = np.argmin(low)
+ 166          if min_idx > 3 and min_idx < window - 5:
+ 167              left_low = low[:min_idx].min()
+ 168              right_low = low[min_idx:].min()
+ 169              left_high_after = high[:min_idx].max()
+ 170              if abs(left_low - right_low) / (left_low + 1) < 0.02:  # 两底接近
+ 171                  patterns["双底"] = {
+ 172                      "置信度": 0.85,
+ 173                      "描述": f"在 {window} 天窗口内形成双底结构，两低点差 < 2%",
+ 174                      "信号": "看涨"
+ 175                  }
+ 176      except:
+ 177          pass
+ 178      
+ 179      # 2. 双顶形态
+ 180      try:
+ 181          max_idx = np.argmax(high)
+ 182          if max_idx > 3 and max_idx < window - 5:
+ 183              left_high_val = high[:max_idx].max()
+ 184              right_high_val = high[max_idx:].max()
+ 185              if abs(left_high_val - right_high_val) / (left_high_val + 1) < 0.02:
+ 186                  patterns["双顶"] = {
+ 187                      "置信度": 0.85,
+ 188                      "描述": f"在 {window} 天窗口内形成双顶结构，两高点差 < 2%",
+ 189                      "信号": "看跌"
+ 190                  }
+ 191      except:
+ 192          pass
+ 193      
+ 194      # 3. 三角形整理
+ 195      try:
+ 196          slope_high = (high[-1] - high[0]) / window
+ 197          slope_low = (low[-1] - low[0]) / window
+ 198          if abs(slope_high) < 0.01 and abs(slope_low) > 0.01 and slope_low > 0:
+ 199              patterns["上升三角形"] = {
+ 200                  "置信度": 0.75,
+ 201                  "描述": "低点逐步抬高，高点横向整理，通常向上突破",
+ 202                  "信号": "看涨"
+ 203              }
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第51页
+
+ 204          elif abs(slope_low) < 0.01 and abs(slope_high) > 0.01 and slope_high < 0:
+ 205              patterns["下降三角形"] = {
+ 206                  "置信度": 0.75,
+ 207                  "描述": "高点逐步降低，低点横向整理，通常向下突破",
+ 208                  "信号": "看跌"
+ 209              }
+ 210      except:
+ 211          pass
+ 212      
+ 213      # 4. 均线多头排列
+ 214      ma5 = recent["ma5"].values[-1] if "ma5" in recent.columns else 0
+ 215      ma10 = recent["ma10"].values[-1] if "ma10" in recent.columns else 0
+ 216      ma20 = recent["ma20"].values[-1] if "ma20" in recent.columns else 0
+ 217      
+ 218      if ma5 > ma10 > ma20 > 0:
+ 219          patterns["均线多头"] = {
+ 220              "置信度": 0.80,
+ 221              "描述": "MA5 > MA10 > MA20，多头趋势强劲",
+ 222              "信号": "看涨"
+ 223          }
+ 224      elif ma5 < ma10 < ma20:
+ 225          patterns["均线空头"] = {
+ 226              "置信度": 0.80,
+ 227              "描述": "MA5 < MA10 < MA20，空头趋势明显",
+ 228              "信号": "看跌"
+ 229          }
+ 230      
+ 231      # 5. RSI 超买超卖
+ 232      rsi = recent["rsi"].values[-1] if "rsi" in recent.columns else 50
+ 233      if rsi < 30:
+ 234          patterns["RSI超卖"] = {
+ 235              "置信度": 0.70,
+ 236              "描述": f"RSI = {rsi:.1f}，低于30，超卖区域",
+ 237              "信号": "可能反弹"
+ 238          }
+ 239      elif rsi > 70:
+ 240          patterns["RSI超买"] = {
+ 241              "置信度": 0.70,
+ 242              "描述": f"RSI = {rsi:.1f}，高于70，超买区域",
+ 243              "信号": "可能回调"
+ 244          }
+ 245      
+ 246      # 6. MACD 金叉死叉
+ 247      if "macd" in recent.columns and "macd_signal" in recent.columns:
+ 248          macd = recent["macd"].values
+ 249          sig = recent["macd_signal"].values
+ 250          if len(macd) >= 2:
+ 251              if macd[-2] < sig[-2] and macd[-1] > sig[-1]:
+ 252                  patterns["MACD金叉"] = {
+ 253                      "置信度": 0.75,
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第52页
+
+ 254                      "描述": "MACD 从下方穿越信号线，看涨信号",
+ 255                      "信号": "看涨"
+ 256                  }
+ 257              elif macd[-2] > sig[-2] and macd[-1] < sig[-1]:
+ 258                  patterns["MACD死叉"] = {
+ 259                      "置信度": 0.75,
+ 260                      "描述": "MACD 从上方穿越信号线，看跌信号",
+ 261                      "信号": "看跌"
+ 262                  }
+ 263      
+ 264      return patterns
+ 265  
+ 266  # ===================== 形态匹配核心 =====================
+ 267  def normalize(series):
+ 268      s = series.values.astype(float)
+ 269      mn, mx = s.min(), s.max()
+ 270      return (s - mn) / (mx - mn + 1e-8)
+ 271  
+ 272  def find_similar_patterns(df, window, top_n=10):
+ 273      """滑动窗口匹配历史相似形态"""
+ 274      prices = df["close"].values
+ 275      n = len(prices)
+ 276      template = normalize(pd.Series(prices[-window:]))
+ 277      
+ 278      results = []
+ 279      for i in range(n - 2 * window):
+ 280          seg = normalize(pd.Series(prices[i:i+window]))
+ 281          sim = 1 - cosine(template, seg)
+ 282          
+ 283          # 计算后续走势
+ 284          future_prices = prices[i+window : i+window+30] if i+window+30 <= n else prices[i+window:]
+ 285          if len(future_prices) >= 5:
+ 286              future_return = (future_prices[-1] - prices[i+window-1]) / (prices[i+window-1] + 1e-8) * 100
+ 287              future_volatility = np.std(future_prices) / (np.mean(future_prices) + 1e-8) * 100
+ 288              
+ 289              # 计算持有不同天数的收益率
+ 290              returns_5d = (future_prices[min(4, len(future_prices)-1)] - prices[i+window-1]) / (prices[i+window-1] + 1e-8) * 100 if len(future_prices) >= 5 else 0
+ 291              returns_10d = (future_prices[min(9, len(future_prices)-1)] - prices[i+window-1]) / (prices[i+window-1] + 1e-8) * 100 if len(future_prices) >= 10 else 0
+ 292              returns_20d = (future_prices[min(19, len(future_prices)-1)] - prices[i+window-1]) / (prices[i+window-1] + 1e-8) * 100 if len(future_prices) >= 20 else 0
+ 293              
+ 294              results.append({
+ 295                  "idx": i,
+ 296                  "similarity": sim,
+ 297                  "date": df.iloc[i]["date"],
+ 298                  "start_price": prices[i],
+ 299                  "end_price": prices[i+window-1],
+ 300                  "future_end_price": future_prices[-1],
+ 301                  "return_5d": returns_5d,
+ 302                  "return_10d": returns_10d,
+ 303                  "return_20d": returns_20d,
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第53页
+
+ 304                  "total_return": future_return,
+ 305                  "volatility": future_volatility,
+ 306                  "is_up": future_return > 0
+ 307              })
+ 308      
+ 309      results.sort(key=lambda x: x["similarity"], reverse=True)
+ 310      return results[:top_n]
+ 311  
+ 312  # ===================== K线绘图 =====================
+ 313  def plot_kline_with_pattern(df_seg, window, match_date=None, sim_score=None, 
+ 314                              show_ma=True, show_vol=True, show_macd=True, show_rsi=False,
+ 315                              title=""):
+ 316      """绘制专业K线图"""
+ 317      df_plot = df_seg.copy()
+ 318      
+ 319      # 涨跌幅颜色
+ 320      colors = ["#e24a4a" if df_plot.iloc[i]["close"] >= df_plot.iloc[i]["open"] else "#2e7d32" 
+ 321                for i in range(len(df_plot))]
+ 322      
+ 323      fig = make_subplots(
+ 324          rows=3 if show_macd else 2,
+ 325          cols=1,
+ 326          shared_xaxes=True,
+ 327          vertical_spacing=0.05,
+ 328          row_heights=[0.6, 0.2, 0.2] if show_macd else [0.75, 0.25],
+ 329          subplot_titles=("", "成交量", "MACD") if show_macd else ("", "成交量")
+ 330      )
+ 331      
+ 332      # K线
+ 333      fig.add_trace(go.Candlestick(
+ 334          x=df_plot["date"],
+ 335          open=df_plot["open"],
+ 336          high=df_plot["high"],
+ 337          low=df_plot["low"],
+ 338          close=df_plot["close"],
+ 339          increasing_line_color="#e24a4a",
+ 340          decreasing_line_color="#2e7d32",
+ 341          name="K线"
+ 342      ), row=1, col=1)
+ 343      
+ 344      # 均线
+ 345      if show_ma and "ma5" in df_plot.columns:
+ 346          fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["ma5"], 
+ 347                                    line=dict(color="#ff9800", width=1), name="MA5"), row=1, col=1)
+ 348          fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["ma10"], 
+ 349                                    line=dict(color="#2196f3", width=1), name="MA10"), row=1, col=1)
+ 350          fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["ma20"], 
+ 351                                    line=dict(color="#9c27b0", width=1), name="MA20"), row=1, col=1)
+ 352      
+ 353      # 匹配区域标记
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第54页
+
+ 354      if window > 0 and len(df_plot) > window:
+ 355          fig.add_vrect(
+ 356              x0=df_plot.iloc[window]["date"], x1=df_plot.iloc[-1]["date"],
+ 357              fillcolor="rgba(255, 165, 0, 0.1)",
+ 358              line_width=0,
+ 359              row="all", col=1
+ 360          )
+ 361          fig.add_vline(
+ 362              x=df_plot.iloc[window]["date"],
+ 363              line_dash="dash", line_color="#ffa500", line_width=2,
+ 364              row="all", col=1
+ 365          )
+ 366      
+ 367      # 成交量
+ 368      if show_vol:
+ 369          colors_vol = ["#e24a4a" if df_plot.iloc[i]["close"] >= df_plot.iloc[i]["open"] else "#2e7d32"
+ 370                        for i in range(len(df_plot))]
+ 371          fig.add_trace(go.Bar(x=df_plot["date"], y=df_plot["volume"],
+ 372                                marker_color=colors_vol, name="成交量",
+ 373                                hovertemplate="成交量: %{y:,.0f}<extra></extra>"), row=2, col=1)
+ 374          if "vol_ma5" in df_plot.columns:
+ 375              fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["vol_ma5"],
+ 376                                       line=dict(color="#ff9800", width=1), name="Vol MA5"), row=2, col=1)
+ 377      
+ 378      # MACD
+ 379      if show_macd and "macd" in df_plot.columns:
+ 380          colors_macd = ["#e24a4a" if v >= 0 else "#2e7d32" for v in df_plot["macd_hist"]]
+ 381          fig.add_trace(go.Bar(x=df_plot["date"], y=df_plot["macd_hist"],
+ 382                               marker_color=colors_macd, name="MACD柱"), row=3, col=1)
+ 383          fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["macd"],
+ 384                                   line=dict(color="#1f77b4", width=1), name="DIF"), row=3, col=1)
+ 385          fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["macd_signal"],
+ 386                                   line=dict(color="#ff5722", width=1), name="DEA"), row=3, col=1)
+ 387      
+ 388      # 标题
+ 389      title_text = title
+ 390      if match_date:
+ 391          title_text += f" | 匹配日: {match_date.strftime('%Y-%m-%d')}"
+ 392      if sim_score:
+ 393          title_text += f" | 相似度: {sim_score:.2%}"
+ 394      
+ 395      fig.update_layout(
+ 396          title=dict(text=title_text, font=dict(size=14)),
+ 397          template="plotly_white",
+ 398          height=500 if show_macd else 400,
+ 399          showlegend=True,
+ 400          legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
+ 401          xaxis_rangeslider_visible=False,
+ 402          hovermode="x unified"
+ 403      )
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第55页
+
+ 404      
+ 405      return fig
+ 406  
+ 407  # ===================== 统计面板 =====================
+ 408  def show_stats_panel(matches, window, extend_days):
+ 409      """显示统计面板"""
+ 410      if not matches:
+ 411          return
+ 412      
+ 413      up_count = sum(1 for m in matches if m["is_up"])
+ 414      total = len(matches)
+ 415      win_rate = up_count / total * 100
+ 416      
+ 417      avg_return_5d = np.mean([m["return_5d"] for m in matches])
+ 418      avg_return_10d = np.mean([m["return_10d"] for m in matches])
+ 419      avg_return_20d = np.mean([m["return_20d"] for m in matches])
+ 420      avg_total = np.mean([m["total_return"] for m in matches])
+ 421      avg_vol = np.mean([m["volatility"] for m in matches])
+ 422      
+ 423      col1, col2, col3, col4, col5 = st.columns(5)
+ 424      
+ 425      with col1:
+ 426          st.metric("历史匹配次数", f"{total} 次", f"窗口: {window}天")
+ 427      with col2:
+ 428          color = "up" if avg_return_5d > 0 else "down"
+ 429          st.metric("5日平均收益", f"{avg_return_5d:+.2f}%", 
+ 430                    "↑" if avg_return_5d > 0 else "↓")
+ 431      with col3:
+ 432          st.metric("10日平均收益", f"{avg_return_10d:+.2f}%",
+ 433                    "↑" if avg_return_10d > 0 else "↓")
+ 434      with col4:
+ 435          st.metric("20日平均收益", f"{avg_return_20d:+.2f}%",
+ 436                    "↑" if avg_return_20d > 0 else "↓")
+ 437      with col5:
+ 438          st.metric("上涨胜率", f"{win_rate:.0f}%", 
+ 439                    f"盈利 {up_count} 次 / {total} 次")
+ 440      
+ 441      # 收益分布图
+ 442      st.subheader("📊 历史匹配后续走势分布")
+ 443      
+ 444      col_left, col_right = st.columns([1, 1])
+ 445      
+ 446      with col_left:
+ 447          # 各持有期收益分布
+ 448          returns_data = {
+ 449              "持有期": ["5日", "10日", "20日", f"{extend_days}日"],
+ 450              "平均收益": [avg_return_5d, avg_return_10d, avg_return_20d, avg_total]
+ 451          }
+ 452          fig_bar = px.bar(
+ 453              x=returns_data["持有期"], 
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第56页
+
+ 454              y=returns_data["平均收益"],
+ 455              color=returns_data["平均收益"],
+ 456              color_continuous_scale=["#2e7d32", "#e24a4a"],
+ 457              title="不同持有期平均收益(%)"
+ 458          )
+ 459          fig_bar.update_layout(showlegend=False, height=300)
+ 460          fig_bar.update_yaxes(title="收益(%)")
+ 461          st.plotly_chart(fig_bar, use_container_width=True)
+ 462      
+ 463      with col_right:
+ 464          # 收益分布直方图
+ 465          fig_hist = px.histogram(
+ 466              x=[m["total_return"] for m in matches],
+ 467              nbins=20,
+ 468              title="20日收益分布直方图",
+ 469              labels={"x": "收益(%)", "y": "次数"}
+ 470          )
+ 471          fig_hist.add_vline(x=0, line_dash="dash", line_color="gray")
+ 472          fig_hist.add_vline(x=avg_total, line_dash="solid", line_color="#1f77b4",
+ 473                            annotation_text=f"均值: {avg_total:.1f}%")
+ 474          fig_hist.update_layout(height=300, showlegend=False)
+ 475          st.plotly_chart(fig_hist, use_container_width=True)
+ 476      
+ 477      # 详细匹配表
+ 478      st.subheader(f"📋 Top {len(matches)} 相似形态详情")
+ 479      
+ 480      detail_df = pd.DataFrame([{
+ 481          "序号": i+1,
+ 482          "匹配日期": m["date"].strftime("%Y-%m-%d"),
+ 483          "相似度": f"{m['similarity']:.2%}",
+ 484          "5日收益": f"{m['return_5d']:+.2f}%",
+ 485          "10日收益": f"{m['return_10d']:+.2f}%",
+ 486          "20日收益": f"{m['total_return']:+.2f}%",
+ 487          "波动率": f"{m['volatility']:.2f}%",
+ 488          "结果": "✅ 上涨" if m["is_up"] else "❌ 下跌"
+ 489      } for i, m in enumerate(matches)])
+ 490      
+ 491      st.dataframe(detail_df, use_container_width=True, hide_index=True)
+ 492      
+ 493      # 导出CSV
+ 494      csv_data = detail_df.to_csv(index=False).encode("utf-8-sig")
+ 495      st.download_button(
+ 496          "📥 导出结果为CSV",
+ 497          csv_data,
+ 498          f"形态匹配结果_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+ 499          "text/csv",
+ 500          key="download-csv"
+ 501      )
+ 502  
+ 503  # ===================== 主界面 =====================
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第57页
+
+ 504  def main():
+ 505      # 标题
+ 506      st.markdown('<p class="main-header">🎯 智图忆市 Pro</p>', unsafe_allow_html=True)
+ 507      st.markdown('<p class="sub-header">K线形态量化分析 · 历史相似匹配 · 概率统计决策</p>', unsafe_allow_html=True)
+ 508      
+ 509      # 免责声明
+ 510      st.warning("⚠️  本工具仅供学习复盘研究，不构成任何投资建议。股市有风险，投资需谨慎。")
+ 511      
+ 512      # 侧边栏
+ 513      with st.sidebar:
+ 514          st.header("⚙️ 分析设置")
+ 515          
+ 516          # 标的
+ 517          st.subheader("📊 选择标的")
+ 518          selected = st.selectbox("股票/指数", list(STOCK_MAP.keys()), label_visibility="collapsed")
+ 519          code = STOCK_MAP[selected]
+ 520          
+ 521          st.subheader("🔧 形态匹配设置")
+ 522          pattern_days = st.slider("模板窗口天数", 5, 60, 20, help="选取最近多少根K线作为匹配模板")
+ 523          extend_days = st.slider("后续观察天数", 5, 60, 20, help="匹配后观察多少天的走势")
+ 524          top_n = st.slider("匹配数量", 3, 20, 10, help="显示最相似的多少个历史形态")
+ 525          max_history = st.slider("历史数据量", 300, 1000, 800, help="从过去多少天开始搜索")
+ 526          
+ 527          st.subheader("📐 图表设置")
+ 528          show_ma = st.checkbox("显示均线 (MA5/10/20)", True)
+ 529          show_vol = st.checkbox("显示成交量", True)
+ 530          show_macd = st.checkbox("显示MACD", True)
+ 531          
+ 532          st.subheader("🔍 形态检测")
+ 533          detect_pattern = st.checkbox("自动检测常见形态", True)
+ 534          
+ 535          find_btn = st.button("🔍 开始分析", type="primary", use_container_width=True)
+ 536      
+ 537      # 主内容
+ 538      if find_btn or "last_code" in st.session_state:
+ 539          if find_btn:
+ 540              st.session_state["last_code"] = code
+ 541              st.session_state["last_pattern"] = pattern_days
+ 542              st.session_state["last_extend"] = extend_days
+ 543              st.session_state["last_top_n"] = top_n
+ 544              st.session_state["last_max_history"] = max_history
+ 545          
+ 546          code = st.session_state.get("last_code", code)
+ 547          pattern_days = st.session_state.get("last_pattern", pattern_days)
+ 548          extend_days = st.session_state.get("last_extend", extend_days)
+ 549          top_n = st.session_state.get("last_top_n", top_n)
+ 550          max_history = st.session_state.get("last_max_history", max_history)
+ 551          
+ 552          with st.spinner("正在获取数据..."):
+ 553              df, source = get_stock_data(code, max_history)
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第58页
+
+ 554          
+ 555          if df is None or len(df) < 100:
+ 556              st.error(f"❌ 数据获取失败，请稍后重试。代码: {code}")
+ 557              return
+ 558          
+ 559          st.success(f"✅ 数据加载成功 [{source.upper()}] 共 {len(df)} 根日K线 | {df['date'].min().strftime('%Y-%m-%d')} ~ {df['date'].max().strftime('%Y-%m-%d')}")
+ 560          
+ 561          # 添加指标
+ 562          df = add_indicators(df)
+ 563          
+ 564          # ===== 第一部分：当前行情 =====
+ 565          st.markdown("---")
+ 566          st.subheader(f"📌 当前行情: {selected}")
+ 567          
+ 568          col_info1, col_info2, col_info3, col_info4 = st.columns(4)
+ 569          last = df.iloc[-1]
+ 570          prev = df.iloc[-2] if len(df) > 1 else last
+ 571          
+ 572          price = last["close"]
+ 573          change = price - prev["close"]
+ 574          change_pct = change / prev["close"] * 100
+ 575          
+ 576          with col_info1:
+ 577              st.metric("最新价", f"{price:.2f}", f"{change:+.2f} ({change_pct:+.2f}%)")
+ 578          with col_info2:
+ 579              st.metric("最高价", f"{last['high']:.2f}")
+ 580          with col_info3:
+ 581              st.metric("最低价", f"{last['low']:.2f}")
+ 582          with col_info4:
+ 583              vol_ratio = last["volume"] / df["vol_ma5"].iloc[-1] if df["vol_ma5"].iloc[-1] > 0 else 1
+ 584              st.metric("量比", f"{vol_ratio:.2f}x", "较5日均量")
+ 585          
+ 586          # 当前K线图
+ 587          fig_current = plot_kline_with_pattern(
+ 588              df.tail(80), 0,
+ 589              show_ma=show_ma, show_vol=show_vol, show_macd=show_macd,
+ 590              title=f"{selected} - 近80日K线"
+ 591          )
+ 592          st.plotly_chart(fig_current, use_container_width=True)
+ 593          
+ 594          # ===== 第二部分：形态检测 =====
+ 595          if detect_pattern:
+ 596              st.markdown("---")
+ 597              st.subheader("🔍 当前形态检测")
+ 598              
+ 599              patterns = detect_patterns(df, window=pattern_days)
+ 600              
+ 601              if patterns:
+ 602                  cols = st.columns(min(len(patterns), 4))
+ 603                  for i, (name, info) in enumerate(patterns.items()):
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第59页
+
+ 604                      with cols[i % 4]:
+ 605                          signal_color = "up" if "看涨" in info["信号"] else "down"
+ 606                          st.markdown(f"""
+ 607                          <div class="match-card">
+ 608                              <h4>{name}</h4>
+ 609                              <p class="{signal_color}">信号: {info['信号']}</p>
+ 610                              <p>置信度: {info['置信度']:.0%}</p>
+ 611                              <p style="font-size:0.85rem; color:#666;">{info['描述']}</p>
+ 612                          </div>
+ 613                          """, unsafe_allow_html=True)
+ 614              else:
+ 615                  st.info("未检测到明确形态")
+ 616          
+ 617          # ===== 第三部分：形态匹配 =====
+ 618          st.markdown("---")
+ 619          st.subheader(f"🔎 历史相似形态匹配 (模板: 近 {pattern_days} 日 → 观察: 后 {extend_days} 日)")
+ 620          
+ 621          with st.spinner("正在匹配历史形态..."):
+ 622              matches = find_similar_patterns(df, pattern_days, top_n)
+ 623          
+ 624          if matches:
+ 625              show_stats_panel(matches, pattern_days, extend_days)
+ 626              
+ 627              # 每个匹配的详细K线图
+ 628              st.markdown("---")
+ 629              st.subheader(f"📈 Top {len(matches)} 相似形态详细走势")
+ 630              
+ 631              for i, m in enumerate(matches):
+ 632                  start_idx = m["idx"]
+ 633                  end_idx = start_idx + pattern_days + extend_days
+ 634                  seg_df = df.iloc[start_idx:end_idx].copy()
+ 635                  
+ 636                  return_color = "up" if m["is_up"] else "down"
+ 637                  return_icon = "📈" if m["is_up"] else "📉"
+ 638                  
+ 639                  with st.expander(f"{return_icon} 匹配 #{i+1} | {m['date'].strftime('%Y-%m-%d')} | 相似度: {m['similarity']:.2%} | 20日收益: <span class='{return_color}'>{m['total_return']:+.2f}%</span>", expanded=(i < 3)):
+ 640                      fig_match = plot_kline_with_pattern(
+ 641                          seg_df, pattern_days,
+ 642                          match_date=m["date"], sim_score=m["similarity"],
+ 643                          show_ma=show_ma, show_vol=show_vol, show_macd=show_macd,
+ 644                          title=f"历史匹配 #{i+1}"
+ 645                      )
+ 646                      st.plotly_chart(fig_match, use_container_width=True)
+ 647                      
+ 648                      # 该匹配详细信息
+ 649                      c1, c2, c3, c4 = st.columns(4)
+ 650                      with c1:
+ 651                          st.metric("5日收益", f"{m['return_5d']:+.2f}%")
+ 652                      with c2:
+ 653                          st.metric("10日收益", f"{m['return_10d']:+.2f}%")
+
+
+智图忆市K线形态分析系统V1.0                                                源代码
+第60页
+
+ 654                      with c3:
+ 655                          st.metric("20日收益", f"{m['total_return']:+.2f}%")
+ 656                      with c4:
+ 657                          st.metric("波动率", f"{m['volatility']:.2f}%")
+ 658          else:
+ 659              st.warning("未找到足够的匹配数据")
+ 660      
+ 661      else:
+ 662          # 初始界面
+ 663          st.markdown("---")
+ 664          col1, col2, col3 = st.columns(3)
+ 665          with col1:
+ 666              st.info("📊 **K线形态匹配**\n用最近N日走势，在历史上寻找相似形态")
+ 667          with col2:
+ 668              st.info("📐 **自动形态检测**\n智能识别双底、头肩顶、三角形等经典形态")
+ 669          with col3:
+ 670              st.info("📈 **概率统计分析**\n基于历史匹配计算上涨概率和预期收益")
+ 671          
+ 672          st.markdown("---")
+ 673          st.markdown("""
+ 674          ### 🚀 使用指南
+ 675          
+ 676          1. **选择标的** - 从左侧选择股票或指数
+ 677          2. **设置参数** - 调整模板天数和观察天数
+ 678          3. **开始分析** - 点击侧边栏按钮获取结果
+ 679          4. **查看详情** - 点击展开查看每个匹配的详细走势
+ 680          5. **导出数据** - 下载CSV进行进一步分析
+ 681          
+ 682          ### 💡 核心理念
+ 683          
+ 684          > "历史不会简单重复，但总押着韵脚"
+ 685          
+ 686          智图忆市通过量化相似形态的历史表现，为您的投资决策提供数据支持。
+ 687          """)
+ 688          
+ 689          # 演示数据
+ 690          if st.button("📊 查看演示效果"):
+ 691              st.info("请先点击侧边栏「开始分析」按钮")
+ 692      
+ 693      # 页脚
+ 694      st.markdown("---")
+ 695      st.markdown(
+ 696          "<p style='text-align:center; color:#888; font-size:0.8rem;'>"
+ 697          "© 2026 智图忆市 | 数据来源: 新浪财经 / AKShare | 仅供学习研究"
+ 698          "</p>",
+ 699          unsafe_allow_html=True
+ 700      )
+ 701  
+ 702  if __name__ == "__main__":
+ 703      main()
+
+

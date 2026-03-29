@@ -16,6 +16,13 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 from scipy.spatial.distance import cosine
 from datetime import datetime, timedelta
+from reportlab.lib.pagesizes import letter, A4
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.units import inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, PageBreak, Table, TableStyle, Image
+from reportlab.lib import colors
+from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
+import io as io_module
 
 # ===================== 页面设置 =====================
 st.set_page_config(
@@ -148,7 +155,7 @@ def add_indicators(df):
 
 # ===================== 形态检测 =====================
 def detect_patterns(df, window=20):
-    """检测常见技术形态"""
+    """检测25种常见技术形态"""
     if len(df) < window:
         return {}
     
@@ -157,17 +164,17 @@ def detect_patterns(df, window=20):
     high = recent["high"].values
     low = recent["low"].values
     volume = recent["volume"].values
+    open_price = recent["open"].values
     
     patterns = {}
     
-    # 1. 双底形态
+    # 1. 双底形态 (Double Bottom)
     try:
         min_idx = np.argmin(low)
         if min_idx > 3 and min_idx < window - 5:
             left_low = low[:min_idx].min()
             right_low = low[min_idx:].min()
-            left_high_after = high[:min_idx].max()
-            if abs(left_low - right_low) / (left_low + 1) < 0.02:  # 两底接近
+            if abs(left_low - right_low) / (left_low + 1) < 0.02:
                 patterns["双底"] = {
                     "置信度": 0.85,
                     "描述": f"在 {window} 天窗口内形成双底结构，两低点差 < 2%",
@@ -176,7 +183,7 @@ def detect_patterns(df, window=20):
     except:
         pass
     
-    # 2. 双顶形态
+    # 2. 双顶形态 (Double Top)
     try:
         max_idx = np.argmax(high)
         if max_idx > 3 and max_idx < window - 5:
@@ -191,7 +198,8 @@ def detect_patterns(df, window=20):
     except:
         pass
     
-    # 3. 三角形整理
+    # 3. 上升三角形 (Rising Triangle)
+    # 4. 下降三角形 (Falling Triangle)
     try:
         slope_high = (high[-1] - high[0]) / window
         slope_low = (low[-1] - low[0]) / window
@@ -210,40 +218,324 @@ def detect_patterns(df, window=20):
     except:
         pass
     
-    # 4. 均线多头排列
+    # 5. 头肩顶 (Head and Shoulders Top)
+    # 6. 头肩底 (Head and Shoulders Bottom)
+    try:
+        if window >= 10:
+            mid_idx = window // 2
+            left_shoulder = high[:mid_idx].max()
+            head = high[mid_idx:].max()
+            right_shoulder = high[-mid_idx:].max()
+            
+            if head > left_shoulder and head > right_shoulder and abs(left_shoulder - right_shoulder) / (left_shoulder + 1) < 0.03:
+                patterns["头肩顶"] = {
+                    "置信度": 0.78,
+                    "描述": "形成左肩-头-右肩结构，中间高点最高，看跌信号",
+                    "信号": "看跌"
+                }
+            
+            # 头肩底
+            left_low = low[:mid_idx].min()
+            head_low = low[mid_idx:].min()
+            right_low = low[-mid_idx:].min()
+            
+            if head_low < left_low and head_low < right_low and abs(left_low - right_low) / (left_low + 1) < 0.03:
+                patterns["头肩底"] = {
+                    "置信度": 0.78,
+                    "描述": "形成左肩-头-右肩结构，中间低点最低，看涨信号",
+                    "信号": "看涨"
+                }
+    except:
+        pass
+    
+    # 7. 旗形整理 (Bull Flag / Bear Flag)
+    try:
+        if window >= 8:
+            mid = window // 2
+            first_half_range = high[:mid].max() - low[:mid].min()
+            second_half_range = high[mid:].max() - low[mid:].min()
+            
+            if second_half_range < first_half_range * 0.5:
+                if close[-1] > close[0]:
+                    patterns["上升旗形"] = {
+                        "置信度": 0.72,
+                        "描述": "前期上升后进入整理，波幅收窄，看涨延续信号",
+                        "信号": "看涨"
+                    }
+                else:
+                    patterns["下降旗形"] = {
+                        "置信度": 0.72,
+                        "描述": "前期下跌后进入整理，波幅收窄，看跌延续信号",
+                        "信号": "看跌"
+                    }
+    except:
+        pass
+    
+    # 8. 楔形整理 (Rising Wedge / Falling Wedge)
+    try:
+        if window >= 8:
+            slope_high = (high[-1] - high[0]) / window
+            slope_low = (low[-1] - low[0]) / window
+            
+            if slope_high > 0 and slope_low > 0 and slope_high > slope_low:
+                patterns["上升楔形"] = {
+                    "置信度": 0.68,
+                    "描述": "高低点都上升但高点上升更快，形成收窄楔形，看跌信号",
+                    "信号": "看跌"
+                }
+            elif slope_high < 0 and slope_low < 0 and slope_high < slope_low:
+                patterns["下降楔形"] = {
+                    "置信度": 0.68,
+                    "描述": "高低点都下降但低点下降更快，形成收窄楔形，看涨信号",
+                    "信号": "看涨"
+                }
+    except:
+        pass
+    
+    # 9. 矩形整理 (Rectangle)
+    try:
+        high_range = high.max() - high.min()
+        low_range = low.max() - low.min()
+        
+        if high_range < (high.mean() * 0.03) and low_range < (low.mean() * 0.03):
+            patterns["矩形整理"] = {
+                "置信度": 0.70,
+                "描述": "价格在一定范围内横向整理，突破方向决定后续走势",
+                "信号": "中性"
+            }
+    except:
+        pass
+    
+    # 10. 杯柄形态 (Cup and Handle)
+    try:
+        if window >= 12:
+            cup_start = 0
+            cup_bottom = low[:window//2].min()
+            cup_end = window // 2
+            handle_start = cup_end
+            handle_bottom = low[handle_start:].min()
+            
+            if cup_bottom < handle_bottom and handle_bottom > cup_bottom * 0.98:
+                patterns["杯柄形态"] = {
+                    "置信度": 0.75,
+                    "描述": "形成杯形底部后，右侧形成较浅的把手，看涨信号",
+                    "信号": "看涨"
+                }
+    except:
+        pass
+    
+    # 11. 吞没形态 (Engulfing)
+    try:
+        if len(close) >= 2:
+            # 看涨吞没
+            if open_price[-2] > close[-2] and close[-1] > open_price[-1] and \
+               open_price[-1] <= close[-2] and close[-1] >= open_price[-2]:
+                patterns["看涨吞没"] = {
+                    "置信度": 0.76,
+                    "描述": "前日阴线被今日阳线完全吞没，看涨反转信号",
+                    "信号": "看涨"
+                }
+            # 看跌吞没
+            elif open_price[-2] < close[-2] and close[-1] < open_price[-1] and \
+                 open_price[-1] >= close[-2] and close[-1] <= open_price[-2]:
+                patterns["看跌吞没"] = {
+                    "置信度": 0.76,
+                    "描述": "前日阳线被今日阴线完全吞没，看跌反转信号",
+                    "信号": "看跌"
+                }
+    except:
+        pass
+    
+    # 12. 早晨之星 (Morning Star)
+    # 13. 黄昏之星 (Evening Star)
+    try:
+        if len(close) >= 3:
+            # 早晨之星：阴线 -> 小星线 -> 阳线
+            if open_price[-3] > close[-3] and \
+               abs(close[-2] - open_price[-2]) < (close[-3] - open_price[-3]) * 0.3 and \
+               close[-1] > open_price[-1]:
+                patterns["早晨之星"] = {
+                    "置信度": 0.74,
+                    "描述": "阴线-小星线-阳线组合，底部反转看涨信号",
+                    "信号": "看涨"
+                }
+            # 黄昏之星：阳线 -> 小星线 -> 阴线
+            elif open_price[-3] < close[-3] and \
+                 abs(close[-2] - open_price[-2]) < (close[-3] - open_price[-3]) * 0.3 and \
+                 close[-1] < open_price[-1]:
+                patterns["黄昏之星"] = {
+                    "置信度": 0.74,
+                    "描述": "阳线-小星线-阴线组合，顶部反转看跌信号",
+                    "信号": "看跌"
+                }
+    except:
+        pass
+    
+    # 14. 锤子线 (Hammer)
+    # 15. 上吊线 (Hanging Man)
+    try:
+        if len(close) >= 1:
+            body = abs(close[-1] - open_price[-1])
+            lower_shadow = open_price[-1] - low[-1] if open_price[-1] > low[-1] else close[-1] - low[-1]
+            upper_shadow = high[-1] - close[-1] if close[-1] > open_price[-1] else high[-1] - open_price[-1]
+            
+            if lower_shadow > body * 2 and upper_shadow < body * 0.5:
+                if close[-1] > open_price[-1]:
+                    patterns["锤子线"] = {
+                        "置信度": 0.72,
+                        "描述": "下影线长，实体小，上影线短，底部反转看涨信号",
+                        "信号": "看涨"
+                    }
+                else:
+                    patterns["上吊线"] = {
+                        "置信度": 0.72,
+                        "描述": "下影线长，实体小，上影线短，顶部反转看跌信号",
+                        "信号": "看跌"
+                    }
+    except:
+        pass
+    
+    # 16. 射击之星 (Shooting Star)
+    try:
+        if len(close) >= 1:
+            body = abs(close[-1] - open_price[-1])
+            upper_shadow = high[-1] - max(close[-1], open_price[-1])
+            lower_shadow = min(close[-1], open_price[-1]) - low[-1]
+            
+            if upper_shadow > body * 2 and lower_shadow < body * 0.5 and close[-1] < open_price[-1]:
+                patterns["射击之星"] = {
+                    "置信度": 0.71,
+                    "描述": "上影线长，实体小，下影线短，顶部反转看跌信号",
+                    "信号": "看跌"
+                }
+    except:
+        pass
+    
+    # 17. 孕育线 (Harami)
+    try:
+        if len(close) >= 2:
+            prev_body = abs(close[-2] - open_price[-2])
+            curr_body = abs(close[-1] - open_price[-1])
+            
+            if curr_body < prev_body * 0.5:
+                # 看涨孕育线
+                if open_price[-2] > close[-2] and close[-1] > open_price[-1]:
+                    patterns["看涨孕育线"] = {
+                        "置信度": 0.68,
+                        "描述": "前日阴线内包含今日阳线，底部反转看涨信号",
+                        "信号": "看涨"
+                    }
+                # 看跌孕育线
+                elif open_price[-2] < close[-2] and close[-1] < open_price[-1]:
+                    patterns["看跌孕育线"] = {
+                        "置信度": 0.68,
+                        "描述": "前日阳线内包含今日阴线，顶部反转看跌信号",
+                        "信号": "看跌"
+                    }
+    except:
+        pass
+    
+    # 18. 三白兵 (Three White Soldiers)
+    # 19. 三乌鸦 (Three Black Crows)
+    try:
+        if len(close) >= 3:
+            # 三白兵：连续三根阳线，收盘价逐日上升
+            if all(close[i] > open_price[i] for i in range(-3, 0)) and \
+               close[-3] < close[-2] < close[-1]:
+                patterns["三白兵"] = {
+                    "置信度": 0.77,
+                    "描述": "连续三根阳线，收盘价逐日上升，强势看涨信号",
+                    "信号": "看涨"
+                }
+            # 三乌鸦：连续三根阴线，收盘价逐日下降
+            elif all(close[i] < open_price[i] for i in range(-3, 0)) and \
+                 close[-3] > close[-2] > close[-1]:
+                patterns["三乌鸦"] = {
+                    "置信度": 0.77,
+                    "描述": "连续三根阴线，收盘价逐日下降，强势看跌信号",
+                    "信号": "看跌"
+                }
+    except:
+        pass
+    
+    # 20. 跳空缺口 (Gap Up / Gap Down)
+    try:
+        if len(close) >= 2:
+            gap = close[-1] - close[-2]
+            gap_pct = gap / close[-2] * 100
+            
+            if gap_pct > 1.5:
+                patterns["向上跳空"] = {
+                    "置信度": 0.65,
+                    "描述": f"向上跳空缺口 {gap_pct:.2f}%，看涨信号",
+                    "信号": "看涨"
+                }
+            elif gap_pct < -1.5:
+                patterns["向下跳空"] = {
+                    "置信度": 0.65,
+                    "描述": f"向下跳空缺口 {gap_pct:.2f}%，看跌信号",
+                    "信号": "看跌"
+                }
+    except:
+        pass
+    
+    # 21. 均线多头排列
+    # 22. 均线空头排列
     ma5 = recent["ma5"].values[-1] if "ma5" in recent.columns else 0
     ma10 = recent["ma10"].values[-1] if "ma10" in recent.columns else 0
     ma20 = recent["ma20"].values[-1] if "ma20" in recent.columns else 0
+    ma60 = recent["ma60"].values[-1] if "ma60" in recent.columns else 0
     
-    if ma5 > ma10 > ma20 > 0:
-        patterns["均线多头"] = {
+    if ma5 > ma10 > ma20 > ma60 > 0:
+        patterns["均线多头排列"] = {
             "置信度": 0.80,
-            "描述": "MA5 > MA10 > MA20，多头趋势强劲",
+            "描述": "MA5 > MA10 > MA20 > MA60，多头趋势强劲",
             "信号": "看涨"
         }
-    elif ma5 < ma10 < ma20:
-        patterns["均线空头"] = {
+    elif ma5 < ma10 < ma20 < ma60:
+        patterns["均线空头排列"] = {
             "置信度": 0.80,
-            "描述": "MA5 < MA10 < MA20，空头趋势明显",
+            "描述": "MA5 < MA10 < MA20 < MA60，空头趋势明显",
             "信号": "看跌"
         }
     
-    # 5. RSI 超买超卖
+    # 23. 均线金叉/银叉 (Golden Cross / Death Cross)
+    try:
+        if "ma5" in recent.columns and "ma10" in recent.columns and len(recent) >= 2:
+            ma5_vals = recent["ma5"].values
+            ma10_vals = recent["ma10"].values
+            
+            if ma5_vals[-2] < ma10_vals[-2] and ma5_vals[-1] > ma10_vals[-1]:
+                patterns["均线金叉"] = {
+                    "置信度": 0.75,
+                    "描述": "MA5 从下方穿越 MA10，看涨信号",
+                    "信号": "看涨"
+                }
+            elif ma5_vals[-2] > ma10_vals[-2] and ma5_vals[-1] < ma10_vals[-1]:
+                patterns["均线死叉"] = {
+                    "置信度": 0.75,
+                    "描述": "MA5 从上方穿越 MA10，看跌信号",
+                    "信号": "看跌"
+                }
+    except:
+        pass
+    
+    # 24. RSI 超买超卖
     rsi = recent["rsi"].values[-1] if "rsi" in recent.columns else 50
     if rsi < 30:
         patterns["RSI超卖"] = {
             "置信度": 0.70,
-            "描述": f"RSI = {rsi:.1f}，低于30，超卖区域",
-            "信号": "可能反弹"
+            "描述": f"RSI = {rsi:.1f}，低于30，超卖区域，可能反弹",
+            "信号": "看涨"
         }
     elif rsi > 70:
         patterns["RSI超买"] = {
             "置信度": 0.70,
-            "描述": f"RSI = {rsi:.1f}，高于70，超买区域",
-            "信号": "可能回调"
+            "描述": f"RSI = {rsi:.1f}，高于70，超买区域，可能回调",
+            "信号": "看跌"
         }
     
-    # 6. MACD 金叉死叉
+    # 25. MACD 金叉死叉
     if "macd" in recent.columns and "macd_signal" in recent.columns:
         macd = recent["macd"].values
         sig = recent["macd_signal"].values
@@ -260,6 +552,30 @@ def detect_patterns(df, window=20):
                     "描述": "MACD 从上方穿越信号线，看跌信号",
                     "信号": "看跌"
                 }
+    
+    # 26. BOLL 突破 (Bollinger Bands Breakout)
+    try:
+        if "close" in recent.columns and len(recent) >= 20:
+            close_vals = recent["close"].values
+            ma20_val = np.mean(close_vals[-20:])
+            std_val = np.std(close_vals[-20:])
+            upper_band = ma20_val + 2 * std_val
+            lower_band = ma20_val - 2 * std_val
+            
+            if close_vals[-1] > upper_band:
+                patterns["BOLL上轨突破"] = {
+                    "置信度": 0.68,
+                    "描述": "价格突破布林带上轨，可能继续上升或回调",
+                    "信号": "看涨"
+                }
+            elif close_vals[-1] < lower_band:
+                patterns["BOLL下轨突破"] = {
+                    "置信度": 0.68,
+                    "描述": "价格突破布林带下轨，可能继续下跌或反弹",
+                    "信号": "看跌"
+                }
+    except:
+        pass
     
     return patterns
 
@@ -308,6 +624,378 @@ def find_similar_patterns(df, window, top_n=10):
     
     results.sort(key=lambda x: x["similarity"], reverse=True)
     return results[:top_n]
+
+# ===================== 策略回测模块 =====================
+def backtest_pattern_strategy(df, pattern_name, holding_days=20):
+    """
+    回测指定形态的策略表现
+    
+    参数：
+    - df: 包含技术指标的数据框
+    - pattern_name: 形态名称
+    - holding_days: 持有天数
+    
+    返回：回测统计结果字典
+    """
+    try:
+        if len(df) < holding_days + 20:
+            return None
+        
+        # 检测所有历史形态出现位置
+        trades = []
+        
+        for i in range(20, len(df) - holding_days):
+            window_df = df.iloc[i-20:i].copy()
+            patterns = detect_patterns(window_df, window=20)
+            
+            if pattern_name in patterns:
+                # 形态出现，记录买入点
+                buy_price = df.iloc[i]["close"]
+                buy_date = df.iloc[i]["date"]
+                
+                # 计算持有期收益
+                sell_idx = min(i + holding_days, len(df) - 1)
+                sell_price = df.iloc[sell_idx]["close"]
+                sell_date = df.iloc[sell_idx]["date"]
+                
+                profit = sell_price - buy_price
+                profit_pct = profit / buy_price * 100
+                
+                trades.append({
+                    "buy_date": buy_date,
+                    "buy_price": buy_price,
+                    "sell_date": sell_date,
+                    "sell_price": sell_price,
+                    "profit": profit,
+                    "profit_pct": profit_pct,
+                    "is_profitable": profit > 0,
+                    "holding_days": (sell_date - buy_date).days
+                })
+        
+        if not trades:
+            return None
+        
+        # 计算统计指标
+        total_trades = len(trades)
+        profitable_trades = sum(1 for t in trades if t["is_profitable"])
+        win_rate = profitable_trades / total_trades * 100
+        
+        profits = [t["profit_pct"] for t in trades]
+        avg_profit = np.mean(profits)
+        max_profit = np.max(profits)
+        min_profit = np.min(profits)
+        
+        # 计算夏普比率（简化版）
+        if len(profits) > 1:
+            sharpe_ratio = np.mean(profits) / (np.std(profits) + 1e-8) * np.sqrt(252)
+        else:
+            sharpe_ratio = 0
+        
+        # 计算权益曲线
+        equity = [100]  # 初始资金100
+        for t in trades:
+            equity.append(equity[-1] * (1 + t["profit_pct"] / 100))
+        
+        return {
+            "pattern_name": pattern_name,
+            "holding_days": holding_days,
+            "total_trades": total_trades,
+            "profitable_trades": profitable_trades,
+            "win_rate": win_rate,
+            "avg_profit": avg_profit,
+            "max_profit": max_profit,
+            "min_profit": min_profit,
+            "sharpe_ratio": sharpe_ratio,
+            "trades": trades,
+            "equity_curve": equity
+        }
+    except Exception as e:
+        st.error(f"回测出错: {str(e)}")
+        return None
+
+def show_backtest_results(backtest_result):
+    """
+    显示回测结果
+    
+    参数：
+    - backtest_result: backtest_pattern_strategy 返回的结果字典
+    """
+    if backtest_result is None:
+        st.warning("该形态历史数据不足，无法回测")
+        return
+    
+    # 策略概要卡片
+    st.subheader("📊 回测概要")
+    col1, col2, col3, col4, col5 = st.columns(5)
+    
+    with col1:
+        st.metric("交易次数", f"{backtest_result['total_trades']} 次")
+    with col2:
+        st.metric("胜率", f"{backtest_result['win_rate']:.1f}%", 
+                  f"{backtest_result['profitable_trades']}/{backtest_result['total_trades']}")
+    with col3:
+        st.metric("平均收益", f"{backtest_result['avg_profit']:+.2f}%")
+    with col4:
+        st.metric("最大收益", f"{backtest_result['max_profit']:+.2f}%")
+    with col5:
+        st.metric("夏普比率", f"{backtest_result['sharpe_ratio']:.2f}")
+    
+    # 权益曲线
+    st.subheader("📈 权益曲线")
+    equity_df = pd.DataFrame({
+        "交易序号": range(len(backtest_result["equity_curve"])),
+        "账户权益": backtest_result["equity_curve"]
+    })
+    
+    fig_equity = px.line(
+        equity_df,
+        x="交易序号",
+        y="账户权益",
+        title=f"策略权益曲线 (初始资金: 100)",
+        markers=True
+    )
+    fig_equity.update_layout(height=400, showlegend=False)
+    st.plotly_chart(fig_equity, use_container_width=True)
+    
+    # 收益分布直方图
+    st.subheader("📊 收益分布")
+    profits = [t["profit_pct"] for t in backtest_result["trades"]]
+    
+    fig_hist = px.histogram(
+        x=profits,
+        nbins=15,
+        title="交易收益分布直方图",
+        labels={"x": "收益(%)", "y": "交易次数"}
+    )
+    fig_hist.add_vline(x=0, line_dash="dash", line_color="gray")
+    fig_hist.add_vline(x=backtest_result["avg_profit"], line_dash="solid", 
+                       line_color="#1f77b4", annotation_text=f"均值: {backtest_result['avg_profit']:.1f}%")
+    fig_hist.update_layout(height=400, showlegend=False)
+    st.plotly_chart(fig_hist, use_container_width=True)
+    
+    # 交易明细表
+    st.subheader("📋 交易明细")
+    trades_df = pd.DataFrame([{
+        "序号": i + 1,
+        "买入日期": t["buy_date"].strftime("%Y-%m-%d"),
+        "买入价": f"{t['buy_price']:.2f}",
+        "卖出日期": t["sell_date"].strftime("%Y-%m-%d"),
+        "卖出价": f"{t['sell_price']:.2f}",
+        "收益%": f"{t['profit_pct']:+.2f}%",
+        "结果": "✅ 盈利" if t["is_profitable"] else "❌ 亏损"
+    } for i, t in enumerate(backtest_result["trades"])])
+    
+    st.dataframe(trades_df, use_container_width=True, hide_index=True)
+    
+    # 导出CSV
+    csv_data = trades_df.to_csv(index=False).encode("utf-8-sig")
+    st.download_button(
+        "📥 导出交易明细为CSV",
+        csv_data,
+        f"回测结果_{backtest_result['pattern_name']}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
+        "text/csv",
+        key="download-backtest-csv"
+    )
+
+# ===================== PDF报告生成 =====================
+def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matches=None):
+    """
+    生成PDF分析报告
+    
+    参数：
+    - df: 股票数据
+    - selected_stock: 股票名称
+    - patterns: 检测到的形态字典
+    - backtest_result: 回测结果（可选）
+    - matches: 形态匹配结果（可选）
+    
+    返回：PDF字节流
+    """
+    try:
+        buffer = io_module.BytesIO()
+        doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.5*inch, bottomMargin=0.5*inch)
+        
+        story = []
+        styles = getSampleStyleSheet()
+        
+        # 自定义样式
+        title_style = ParagraphStyle(
+            'CustomTitle',
+            parent=styles['Heading1'],
+            fontSize=24,
+            textColor=colors.HexColor('#1f77b4'),
+            spaceAfter=30,
+            alignment=TA_CENTER,
+            fontName='Helvetica-Bold'
+        )
+        
+        heading_style = ParagraphStyle(
+            'CustomHeading',
+            parent=styles['Heading2'],
+            fontSize=14,
+            textColor=colors.HexColor('#1f77b4'),
+            spaceAfter=12,
+            spaceBefore=12,
+            fontName='Helvetica-Bold'
+        )
+        
+        # 封面
+        story.append(Paragraph("智图忆市 分析报告", title_style))
+        story.append(Spacer(1, 0.2*inch))
+        story.append(Paragraph(f"标的: {selected_stock}", styles['Normal']))
+        story.append(Paragraph(f"生成时间: {datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}", styles['Normal']))
+        story.append(Spacer(1, 0.3*inch))
+        
+        # 当前行情摘要
+        story.append(Paragraph("当前行情摘要", heading_style))
+        last = df.iloc[-1]
+        prev = df.iloc[-2] if len(df) > 1 else last
+        
+        price = last["close"]
+        change = price - prev["close"]
+        change_pct = change / prev["close"] * 100
+        rsi = last["rsi"] if "rsi" in last else 50
+        macd = last["macd"] if "macd" in last else 0
+        
+        market_data = [
+            ["指标", "数值"],
+            ["最新价", f"{price:.2f}"],
+            ["涨跌幅", f"{change_pct:+.2f}%"],
+            ["最高价", f"{last['high']:.2f}"],
+            ["最低价", f"{last['low']:.2f}"],
+            ["RSI(14)", f"{rsi:.1f}"],
+            ["MACD", f"{macd:+.4f}"]
+        ]
+        
+        market_table = Table(market_data, colWidths=[2*inch, 2*inch])
+        market_table.setStyle(TableStyle([
+            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
+            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+            ('FONTSIZE', (0, 0), (-1, 0), 12),
+            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
+            ('GRID', (0, 0), (-1, -1), 1, colors.black)
+        ]))
+        story.append(market_table)
+        story.append(Spacer(1, 0.2*inch))
+        
+        # 形态检测结果
+        story.append(Paragraph("形态检测结果", heading_style))
+        if patterns:
+            pattern_data = [["形态名称", "信号", "置信度", "描述"]]
+            for name, info in list(patterns.items())[:10]:  # 最多显示10个
+                pattern_data.append([
+                    name,
+                    info["信号"],
+                    f"{info['置信度']:.0%}",
+                    info["描述"][:30] + "..." if len(info["描述"]) > 30 else info["描述"]
+                ])
+            
+            pattern_table = Table(pattern_data, colWidths=[1.5*inch, 1*inch, 1*inch, 2*inch])
+            pattern_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 9),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.lightgrey),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(pattern_table)
+        else:
+            story.append(Paragraph("未检测到明确形态", styles['Normal']))
+        
+        story.append(Spacer(1, 0.2*inch))
+        
+        # 形态匹配统计
+        if matches:
+            story.append(Paragraph("形态匹配统计", heading_style))
+            up_count = sum(1 for m in matches if m["is_up"])
+            total = len(matches)
+            win_rate = up_count / total * 100
+            avg_return = np.mean([m["total_return"] for m in matches])
+            
+            match_data = [
+                ["指标", "数值"],
+                ["历史匹配次数", f"{total} 次"],
+                ["上涨次数", f"{up_count} 次"],
+                ["胜率", f"{win_rate:.1f}%"],
+                ["平均收益", f"{avg_return:+.2f}%"]
+            ]
+            
+            match_table = Table(match_data, colWidths=[2*inch, 2*inch])
+            match_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 11),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.lightblue),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(match_table)
+            story.append(Spacer(1, 0.2*inch))
+        
+        # 回测结果
+        if backtest_result:
+            story.append(PageBreak())
+            story.append(Paragraph("策略回测结果", heading_style))
+            
+            backtest_data = [
+                ["指标", "数值"],
+                ["策略名称", backtest_result["pattern_name"]],
+                ["持有天数", f"{backtest_result['holding_days']} 天"],
+                ["交易次数", f"{backtest_result['total_trades']} 次"],
+                ["胜率", f"{backtest_result['win_rate']:.1f}%"],
+                ["平均收益", f"{backtest_result['avg_profit']:+.2f}%"],
+                ["最大收益", f"{backtest_result['max_profit']:+.2f}%"],
+                ["最小收益", f"{backtest_result['min_profit']:+.2f}%"],
+                ["夏普比率", f"{backtest_result['sharpe_ratio']:.2f}"]
+            ]
+            
+            backtest_table = Table(backtest_data, colWidths=[2*inch, 2*inch])
+            backtest_table.setStyle(TableStyle([
+                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
+                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
+                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
+                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
+                ('BACKGROUND', (0, 1), (-1, -1), colors.lightgreen),
+                ('GRID', (0, 0), (-1, -1), 1, colors.black)
+            ]))
+            story.append(backtest_table)
+            story.append(Spacer(1, 0.2*inch))
+        
+        # 免责声明
+        story.append(PageBreak())
+        story.append(Paragraph("免责声明", heading_style))
+        disclaimer = """
+        <br/>
+        1. 本报告仅供学习研究之用，不构成任何投资建议。<br/>
+        <br/>
+        2. 股票市场存在风险，投资需谨慎。过往表现不代表未来结果。<br/>
+        <br/>
+        3. 本工具基于历史数据进行形态匹配和统计分析，但市场环境不断变化，历史规律可能失效。<br/>
+        <br/>
+        4. 使用本工具进行投资决策所产生的任何损失，本工具开发者不承担任何责任。<br/>
+        <br/>
+        5. 请在充分了解风险的基础上，根据自身情况做出投资决策。<br/>
+        """
+        story.append(Paragraph(disclaimer, styles['Normal']))
+        
+        # 生成PDF
+        doc.build(story)
+        buffer.seek(0)
+        return buffer.getvalue()
+    
+    except Exception as e:
+        st.error(f"PDF生成失败: {str(e)}")
+        return None
 
 # ===================== K线绘图 =====================
 def plot_kline_with_pattern(df_seg, window, match_date=None, sim_score=None, 
@@ -532,6 +1220,23 @@ def main():
         st.subheader("🔍 形态检测")
         detect_pattern = st.checkbox("自动检测常见形态", True)
         
+        # 策略回测设置
+        st.markdown("---")
+        with st.expander("📉 策略回测", expanded=False):
+            st.subheader("回测设置")
+            backtest_patterns = detect_patterns(pd.DataFrame(), window=1)  # 获取所有形态名称
+            pattern_list = ["双底", "双顶", "上升三角形", "下降三角形", "头肩顶", "头肩底", 
+                           "上升旗形", "下降旗形", "上升楔形", "下降楔形", "矩形整理", "杯柄形态",
+                           "看涨吞没", "看跌吞没", "早晨之星", "黄昏之星", "锤子线", "上吊线",
+                           "射击之星", "看涨孕育线", "看跌孕育线", "三白兵", "三乌鸦", 
+                           "向上跳空", "向下跳空", "均线多头排列", "均线空头排列", "均线金叉", 
+                           "均线死叉", "RSI超卖", "RSI超买", "MACD金叉", "MACD死叉", 
+                           "BOLL上轨突破", "BOLL下轨突破"]
+            
+            backtest_pattern = st.selectbox("选择回测策略", pattern_list, key="backtest_pattern_select")
+            backtest_holding = st.slider("持有天数", 5, 60, 20, key="backtest_holding_slider")
+            backtest_btn = st.button("🚀 开始回测", key="backtest_btn", use_container_width=True)
+        
         find_btn = st.button("🔍 开始分析", type="primary", use_container_width=True)
     
     # 主内容
@@ -657,6 +1362,62 @@ def main():
                         st.metric("波动率", f"{m['volatility']:.2f}%")
         else:
             st.warning("未找到足够的匹配数据")
+        
+        # ===== 第四部分：策略回测 =====
+        st.markdown("---")
+        st.subheader("📉 策略回测")
+        
+        col_backtest1, col_backtest2, col_backtest3 = st.columns([2, 1, 1])
+        
+        with col_backtest1:
+            backtest_pattern_select = st.selectbox(
+                "选择回测策略",
+                ["双底", "双顶", "上升三角形", "下降三角形", "头肩顶", "头肩底", 
+                 "上升旗形", "下降旗形", "上升楔形", "下降楔形", "矩形整理", "杯柄形态",
+                 "看涨吞没", "看跌吞没", "早晨之星", "黄昏之星", "锤子线", "上吊线",
+                 "射击之星", "看涨孕育线", "看跌孕育线", "三白兵", "三乌鸦", 
+                 "向上跳空", "向下跳空", "均线多头排列", "均线空头排列", "均线金叉", 
+                 "均线死叉", "RSI超卖", "RSI超买", "MACD金叉", "MACD死叉", 
+                 "BOLL上轨突破", "BOLL下轨突破"],
+                key="backtest_pattern_main"
+            )
+        
+        with col_backtest2:
+            backtest_holding_select = st.slider("持有天数", 5, 60, 20, key="backtest_holding_main")
+        
+        with col_backtest3:
+            backtest_run = st.button("▶️ 回测", key="backtest_run_main", use_container_width=True)
+        
+        if backtest_run:
+            with st.spinner(f"正在回测 {backtest_pattern_select} 策略..."):
+                backtest_result = backtest_pattern_strategy(df, backtest_pattern_select, backtest_holding_select)
+            
+            if backtest_result:
+                show_backtest_results(backtest_result)
+                st.session_state["last_backtest"] = backtest_result
+            else:
+                st.warning("该形态历史数据不足，无法回测")
+        
+        # ===== 第五部分：PDF报告生成 =====
+        st.markdown("---")
+        st.subheader("📄 生成分析报告")
+        
+        if st.button("📄 生成PDF报告", use_container_width=True):
+            with st.spinner("正在生成PDF报告..."):
+                backtest_for_report = st.session_state.get("last_backtest", None)
+                pdf_bytes = generate_pdf_report(df, selected, patterns, backtest_for_report, matches)
+            
+            if pdf_bytes:
+                st.download_button(
+                    "📥 下载PDF报告",
+                    pdf_bytes,
+                    f"智图忆市分析报告_{selected}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.pdf",
+                    "application/pdf",
+                    key="download-pdf-report"
+                )
+                st.success("✅ PDF报告生成成功！")
+            else:
+                st.error("❌ PDF报告生成失败")
     
     else:
         # 初始界面
