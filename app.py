@@ -725,23 +725,23 @@ def show_backtest_results(backtest_result):
         return
     
     # 策略概要卡片
-    st.subheader("📊 回测概要")
+    st.subheader("📊 回测结果概要")
     col1, col2, col3, col4, col5 = st.columns(5)
     
     with col1:
-        st.metric("交易次数", f"{backtest_result['total_trades']} 次")
+        st.metric("📊 交易次数", f"{backtest_result['total_trades']} 次")
     with col2:
-        st.metric("胜率", f"{backtest_result['win_rate']:.1f}%", 
+        st.metric("📈 胜率", f"{backtest_result['win_rate']:.1f}%", 
                   f"{backtest_result['profitable_trades']}/{backtest_result['total_trades']}")
     with col3:
-        st.metric("平均收益", f"{backtest_result['avg_profit']:+.2f}%")
+        st.metric("💰 平均收益", f"{backtest_result['avg_profit']:+.2f}%")
     with col4:
-        st.metric("最大收益", f"{backtest_result['max_profit']:+.2f}%")
+        st.metric("🚀 最大收益", f"{backtest_result['max_profit']:+.2f}%")
     with col5:
-        st.metric("夏普比率", f"{backtest_result['sharpe_ratio']:.2f}")
+        st.metric("📊 夏普比率", f"{backtest_result['sharpe_ratio']:.2f}")
     
     # 权益曲线
-    st.subheader("📈 权益曲线")
+    st.subheader("📈 策略权益曲线")
     equity_df = pd.DataFrame({
         "交易序号": range(len(backtest_result["equity_curve"])),
         "账户权益": backtest_result["equity_curve"]
@@ -758,7 +758,7 @@ def show_backtest_results(backtest_result):
     st.plotly_chart(fig_equity, use_container_width=True)
     
     # 收益分布直方图
-    st.subheader("📊 收益分布")
+    st.subheader("📊 交易收益分布")
     profits = [t["profit_pct"] for t in backtest_result["trades"]]
     
     fig_hist = px.histogram(
@@ -774,7 +774,7 @@ def show_backtest_results(backtest_result):
     st.plotly_chart(fig_hist, use_container_width=True)
     
     # 交易明细表
-    st.subheader("📋 交易明细")
+    st.subheader("📋 回测交易明细")
     trades_df = pd.DataFrame([{
         "序号": i + 1,
         "买入日期": t["buy_date"].strftime("%Y-%m-%d"),
@@ -790,7 +790,7 @@ def show_backtest_results(backtest_result):
     # 导出CSV
     csv_data = trades_df.to_csv(index=False).encode("utf-8-sig")
     st.download_button(
-        "📥 导出交易明细为CSV",
+        "📥 导出回测结果为CSV",
         csv_data,
         f"回测结果_{backtest_result['pattern_name']}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
         "text/csv",
@@ -1409,7 +1409,7 @@ def main():
             backtest_holding_select = st.slider("持有天数", 5, 60, 20, key="backtest_holding_main")
         
         with col_backtest3:
-            backtest_run = st.button("▶️ 回测", key="backtest_run_main", use_container_width=True)
+            backtest_run = st.button("🚀 开始回测", key="backtest_run_main", use_container_width=True)
         
         if backtest_run:
             with st.spinner(f"正在回测 {backtest_pattern_select} 策略..."):
