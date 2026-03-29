@@ -917,13 +917,17 @@ Stock market has risks. Invest with caution.
         # 转换为字节
         report_bytes = report_text.encode('utf-8')
         
+        # 调试：打印字节长度
+        print(f"DEBUG: Report bytes length = {len(report_bytes)}")
+        
         if report_bytes and len(report_bytes) > 0:
             return report_bytes
         else:
+            print("DEBUG: Report bytes is empty!")
             return None
         
     except Exception as e:
-        st.error(f"Report generation failed: {str(e)}")
+        print(f"DEBUG: Exception in generate_pdf_report: {str(e)}")
         return None
 
 # ===================== 主程序 =====================
