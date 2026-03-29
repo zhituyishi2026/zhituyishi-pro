@@ -800,418 +800,88 @@ def show_backtest_results(backtest_result):
 # ===================== PDF报告生成 =====================
 def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matches=None):
     """
-    生成PDF分析报告
-    
-    参数：
-    - df: 股票数据
-    - selected_stock: 股票名称
-    - patterns: 检测到的形态字典
-    - backtest_result: 回测结果（可选）
-    - matches: 形态匹配结果（可选）
-    
-    返回：PDF字节流
+    生成PDF分析报告（简化版 - 使用HTML转PDF）
     """
     try:
-        from reportlab.pdfbase import pdfmetrics
-        from reportlab.pdfbase.ttfonts import TTFont
-        import os
-        
-        # 注册中文字体（使用系统字体）
-        try:
-            # Windows 系统字体路径
-            font_path = "C:\\Windows\\Fonts\\simhei.ttf"
-            if os.path.exists(font_path):
-                pdfmetrics.registerFont(TTFont('SimHei', font_path))
-                chinese_font = 'SimHei'
-            else:
-                # 备用：使用 Helvetica
-                chinese_font = 'Helvetica'
-        except:
-            chinese_font = 'Helvetica'
-        
-        buffer = io_module.BytesIO()
-        doc = SimpleDocTemplate(buffer, pagesize=A4, topMargin=0.5*inch, bottomMargin=0.5*inch)
-        
-        story = []
-        styles = getSampleStyleSheet()
-        
-        # 自定义样式（支持中文）
-        title_style = ParagraphStyle(
-            'CustomTitle',
-            parent=styles['Heading1'],
-            fontSize=24,
-            textColor=colors.HexColor('#1f77b4'),
-            spaceAfter=30,
-            alignment=TA_CENTER,
-            fontName=chinese_font
-        )
-        
-        heading_style = ParagraphStyle(
-            'CustomHeading',
-            parent=styles['Heading2'],
-            fontSize=14,
-            textColor=colors.HexColor('#1f77b4'),
-            spaceAfter=12,
-            spaceBefore=12,
-            fontName=chinese_font
-        )
-        
-        normal_style = ParagraphStyle(
-            'CustomNormal',
-            parent=styles['Normal'],
-            fontName=chinese_font
-        )
-        
-        # 封面
-        story.append(Paragraph("智图忆市 分析报告", title_style))
-        story.append(Spacer(1, 0.2*inch))
-        story.append(Paragraph(f"标的: {selected_stock}", normal_style))
-        story.append(Paragraph(f"生成时间: {datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}", normal_style))
-        story.append(Spacer(1, 0.3*inch))
-        
-        # 当前行情摘要
-        story.append(Paragraph("当前行情摘要", heading_style))
-        last = df.iloc[-1]
-        prev = df.iloc[-2] if len(df) > 1 else last
-        
-        price = last["close"]
-        change = price - prev["close"]
-        change_pct = change / prev["close"] * 100
-        rsi = last["rsi"] if "rsi" in last else 50
-        macd = last["macd"] if "macd" in last else 0
-        
-        market_data = [
-            ["指标", "数值"],
-            ["最新价", f"{price:.2f}"],
-            ["涨跌幅", f"{change_pct:+.2f}%"],
-            ["最高价", f"{last['high']:.2f}"],
-            ["最低价", f"{last['low']:.2f}"],
-            ["RSI(14)", f"{rsi:.1f}"],
-            ["MACD", f"{macd:+.4f}"]
-        ]
-        
-        market_table = Table(market_data, colWidths=[2*inch, 2*inch])
-        market_table.setStyle(TableStyle([
-            ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
-            ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-            ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-            ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-            ('FONTSIZE', (0, 0), (-1, 0), 12),
-            ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-            ('BACKGROUND', (0, 1), (-1, -1), colors.beige),
-            ('GRID', (0, 0), (-1, -1), 1, colors.black)
-        ]))
-        story.append(market_table)
-        story.append(Spacer(1, 0.2*inch))
-        
-        # 形态检测结果
-        story.append(Paragraph("形态检测结果", heading_style))
-        if patterns:
-            pattern_data = [["形态名称", "信号", "置信度", "描述"]]
-            for name, info in list(patterns.items())[:10]:  # 最多显示10个
-                pattern_data.append([
-                    name,
-                    info["信号"],
-                    f"{info['置信度']:.0%}",
-                    info["描述"][:30] + "..." if len(info["描述"]) > 30 else info["描述"]
-                ])
+        # 简化版：生成HTML内容，然后转为PDF
+        html_content = f"""
+        <html>
+        <head>
+            <meta charset="utf-8">
+            <style>
+                body {{ font-family: Arial; margin: 20px; }}
+                h1 {{ color: #1f77b4; text-align: center; }}
+                h2 {{ color: #1f77b4; margin-top: 20px; }}
+                table {{ border-collapse: collapse; width: 100%; margin: 10px 0; }}
+                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: center; }}
+                th {{ background-color: #1f77b4; color: white; }}
+                .warning {{ color: red; font-weight: bold; }}
+            </style>
+        </head>
+        <body>
+            <h1>智图忆市 分析报告</h1>
+            <p><strong>标的:</strong> {selected_stock}</p>
+            <p><strong>生成时间:</strong> {datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}</p>
             
-            pattern_table = Table(pattern_data, colWidths=[1.5*inch, 1*inch, 1*inch, 2*inch])
-            pattern_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 9),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.lightgrey),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
-            story.append(pattern_table)
-        else:
-            story.append(Paragraph("未检测到明确形态", styles['Normal']))
-        
-        story.append(Spacer(1, 0.2*inch))
-        
-        # 形态匹配统计
-        if matches:
-            story.append(Paragraph("形态匹配统计", heading_style))
-            up_count = sum(1 for m in matches if m["is_up"])
-            total = len(matches)
-            win_rate = up_count / total * 100
-            avg_return = np.mean([m["total_return"] for m in matches])
+            <h2>当前行情摘要</h2>
+            <table>
+                <tr><th>指标</th><th>数值</th></tr>
+                <tr><td>最新价</td><td>{df.iloc[-1]['close']:.2f}</td></tr>
+                <tr><td>涨跌幅</td><td>{(df.iloc[-1]['close'] - df.iloc[-2]['close']) / df.iloc[-2]['close'] * 100:+.2f}%</td></tr>
+                <tr><td>最高价</td><td>{df.iloc[-1]['high']:.2f}</td></tr>
+                <tr><td>最低价</td><td>{df.iloc[-1]['low']:.2f}</td></tr>
+            </table>
             
-            match_data = [
-                ["指标", "数值"],
-                ["历史匹配次数", f"{total} 次"],
-                ["上涨次数", f"{up_count} 次"],
-                ["胜率", f"{win_rate:.1f}%"],
-                ["平均收益", f"{avg_return:+.2f}%"]
-            ]
+            <h2>形态检测结果</h2>
+            <p>检测到的形态数量: {len(patterns) if patterns else 0}</p>
             
-            match_table = Table(match_data, colWidths=[2*inch, 2*inch])
-            match_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 11),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.lightblue),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
-            story.append(match_table)
-            story.append(Spacer(1, 0.2*inch))
-        
-        # 回测结果
-        if backtest_result:
-            story.append(PageBreak())
-            story.append(Paragraph("策略回测结果", heading_style))
-            
-            backtest_data = [
-                ["指标", "数值"],
-                ["策略名称", backtest_result["pattern_name"]],
-                ["持有天数", f"{backtest_result['holding_days']} 天"],
-                ["交易次数", f"{backtest_result['total_trades']} 次"],
-                ["胜率", f"{backtest_result['win_rate']:.1f}%"],
-                ["平均收益", f"{backtest_result['avg_profit']:+.2f}%"],
-                ["最大收益", f"{backtest_result['max_profit']:+.2f}%"],
-                ["最小收益", f"{backtest_result['min_profit']:+.2f}%"],
-                ["夏普比率", f"{backtest_result['sharpe_ratio']:.2f}"]
-            ]
-            
-            backtest_table = Table(backtest_data, colWidths=[2*inch, 2*inch])
-            backtest_table.setStyle(TableStyle([
-                ('BACKGROUND', (0, 0), (-1, 0), colors.HexColor('#1f77b4')),
-                ('TEXTCOLOR', (0, 0), (-1, 0), colors.whitesmoke),
-                ('ALIGN', (0, 0), (-1, -1), 'CENTER'),
-                ('FONTNAME', (0, 0), (-1, 0), 'Helvetica-Bold'),
-                ('FONTSIZE', (0, 0), (-1, -1), 10),
-                ('BOTTOMPADDING', (0, 0), (-1, 0), 12),
-                ('BACKGROUND', (0, 1), (-1, -1), colors.lightgreen),
-                ('GRID', (0, 0), (-1, -1), 1, colors.black)
-            ]))
-            story.append(backtest_table)
-            story.append(Spacer(1, 0.2*inch))
-        
-        # 免责声明
-        story.append(PageBreak())
-        story.append(Paragraph("免责声明", heading_style))
-        disclaimer = """
-        <br/>
-        1. 本报告仅供学习研究之用，不构成任何投资建议。<br/>
-        <br/>
-        2. 股票市场存在风险，投资需谨慎。过往表现不代表未来结果。<br/>
-        <br/>
-        3. 本工具基于历史数据进行形态匹配和统计分析，但市场环境不断变化，历史规律可能失效。<br/>
-        <br/>
-        4. 使用本工具进行投资决策所产生的任何损失，本工具开发者不承担任何责任。<br/>
-        <br/>
-        5. 请在充分了解风险的基础上，根据自身情况做出投资决策。<br/>
+            <h2>免责声明</h2>
+            <p class="warning">本工具仅供学习复盘研究，不构成任何投资建议。股市有风险，投资需谨慎。</p>
+        </body>
+        </html>
         """
-        story.append(Paragraph(disclaimer, styles['Normal']))
         
-        # 生成PDF
-        doc.build(story)
-        buffer.seek(0)
-        return buffer.getvalue()
-    
+        # 使用 weasyprint 或 pdfkit 转换（如果可用）
+        try:
+            from weasyprint import HTML, CSS
+            import io as io_module
+            
+            pdf_bytes = HTML(string=html_content).write_pdf()
+            return pdf_bytes
+        except:
+            # 备用方案：返回简单的文本PDF
+            from reportlab.lib.pagesizes import A4
+            from reportlab.pdfgen import canvas
+            import io as io_module
+            
+            buffer = io_module.BytesIO()
+            c = canvas.Canvas(buffer, pagesize=A4)
+            c.setFont("Helvetica", 12)
+            
+            y = 750
+            c.drawString(100, y, "ZHITU YISHI - Analysis Report")
+            y -= 30
+            c.drawString(100, y, f"Stock: {selected_stock}")
+            y -= 20
+            c.drawString(100, y, f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            y -= 40
+            
+            c.drawString(100, y, "Current Price: {:.2f}".format(df.iloc[-1]['close']))
+            y -= 20
+            c.drawString(100, y, "Patterns Detected: {}".format(len(patterns) if patterns else 0))
+            y -= 40
+            
+            c.drawString(100, y, "Disclaimer: For research only. Not investment advice.")
+            
+            c.save()
+            buffer.seek(0)
+            return buffer.getvalue()
+            
     except Exception as e:
         st.error(f"PDF生成失败: {str(e)}")
         return None
 
-# ===================== K线绘图 =====================
-def plot_kline_with_pattern(df_seg, window, match_date=None, sim_score=None, 
-                            show_ma=True, show_vol=True, show_macd=True, show_rsi=False,
-                            title=""):
-    """绘制专业K线图"""
-    df_plot = df_seg.copy()
-    
-    # 涨跌幅颜色
-    colors = ["#e24a4a" if df_plot.iloc[i]["close"] >= df_plot.iloc[i]["open"] else "#2e7d32" 
-              for i in range(len(df_plot))]
-    
-    fig = make_subplots(
-        rows=3 if show_macd else 2,
-        cols=1,
-        shared_xaxes=True,
-        vertical_spacing=0.05,
-        row_heights=[0.6, 0.2, 0.2] if show_macd else [0.75, 0.25],
-        subplot_titles=("", "成交量", "MACD") if show_macd else ("", "成交量")
-    )
-    
-    # K线
-    fig.add_trace(go.Candlestick(
-        x=df_plot["date"],
-        open=df_plot["open"],
-        high=df_plot["high"],
-        low=df_plot["low"],
-        close=df_plot["close"],
-        increasing_line_color="#e24a4a",
-        decreasing_line_color="#2e7d32",
-        name="K线"
-    ), row=1, col=1)
-    
-    # 均线
-    if show_ma and "ma5" in df_plot.columns:
-        fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["ma5"], 
-                                  line=dict(color="#ff9800", width=1), name="MA5"), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["ma10"], 
-                                  line=dict(color="#2196f3", width=1), name="MA10"), row=1, col=1)
-        fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["ma20"], 
-                                  line=dict(color="#9c27b0", width=1), name="MA20"), row=1, col=1)
-    
-    # 匹配区域标记
-    if window > 0 and len(df_plot) > window:
-        fig.add_vrect(
-            x0=df_plot.iloc[window]["date"], x1=df_plot.iloc[-1]["date"],
-            fillcolor="rgba(255, 165, 0, 0.1)",
-            line_width=0,
-            row="all", col=1
-        )
-        fig.add_vline(
-            x=df_plot.iloc[window]["date"],
-            line_dash="dash", line_color="#ffa500", line_width=2,
-            row="all", col=1
-        )
-    
-    # 成交量
-    if show_vol:
-        colors_vol = ["#e24a4a" if df_plot.iloc[i]["close"] >= df_plot.iloc[i]["open"] else "#2e7d32"
-                      for i in range(len(df_plot))]
-        fig.add_trace(go.Bar(x=df_plot["date"], y=df_plot["volume"],
-                              marker_color=colors_vol, name="成交量",
-                              hovertemplate="成交量: %{y:,.0f}<extra></extra>"), row=2, col=1)
-        if "vol_ma5" in df_plot.columns:
-            fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["vol_ma5"],
-                                     line=dict(color="#ff9800", width=1), name="Vol MA5"), row=2, col=1)
-    
-    # MACD
-    if show_macd and "macd" in df_plot.columns:
-        colors_macd = ["#e24a4a" if v >= 0 else "#2e7d32" for v in df_plot["macd_hist"]]
-        fig.add_trace(go.Bar(x=df_plot["date"], y=df_plot["macd_hist"],
-                             marker_color=colors_macd, name="MACD柱"), row=3, col=1)
-        fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["macd"],
-                                 line=dict(color="#1f77b4", width=1), name="DIF"), row=3, col=1)
-        fig.add_trace(go.Scatter(x=df_plot["date"], y=df_plot["macd_signal"],
-                                 line=dict(color="#ff5722", width=1), name="DEA"), row=3, col=1)
-    
-    # 标题
-    title_text = title
-    if match_date:
-        title_text += f" | 匹配日: {match_date.strftime('%Y-%m-%d')}"
-    if sim_score:
-        title_text += f" | 相似度: {sim_score:.2%}"
-    
-    fig.update_layout(
-        title=dict(text=title_text, font=dict(size=14)),
-        template="plotly_white",
-        height=500 if show_macd else 400,
-        showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1),
-        xaxis_rangeslider_visible=False,
-        hovermode="x unified"
-    )
-    
-    return fig
-
-# ===================== 统计面板 =====================
-def show_stats_panel(matches, window, extend_days):
-    """显示统计面板"""
-    if not matches:
-        return
-    
-    up_count = sum(1 for m in matches if m["is_up"])
-    total = len(matches)
-    win_rate = up_count / total * 100
-    
-    avg_return_5d = np.mean([m["return_5d"] for m in matches])
-    avg_return_10d = np.mean([m["return_10d"] for m in matches])
-    avg_return_20d = np.mean([m["return_20d"] for m in matches])
-    avg_total = np.mean([m["total_return"] for m in matches])
-    avg_vol = np.mean([m["volatility"] for m in matches])
-    
-    col1, col2, col3, col4, col5 = st.columns(5)
-    
-    with col1:
-        st.metric("历史匹配次数", f"{total} 次", f"窗口: {window}天")
-    with col2:
-        color = "up" if avg_return_5d > 0 else "down"
-        st.metric("5日平均收益", f"{avg_return_5d:+.2f}%", 
-                  "↑" if avg_return_5d > 0 else "↓")
-    with col3:
-        st.metric("10日平均收益", f"{avg_return_10d:+.2f}%",
-                  "↑" if avg_return_10d > 0 else "↓")
-    with col4:
-        st.metric("20日平均收益", f"{avg_return_20d:+.2f}%",
-                  "↑" if avg_return_20d > 0 else "↓")
-    with col5:
-        st.metric("上涨胜率", f"{win_rate:.0f}%", 
-                  f"盈利 {up_count} 次 / {total} 次")
-    
-    # 收益分布图
-    st.subheader("📊 历史匹配后续走势分布")
-    
-    col_left, col_right = st.columns([1, 1])
-    
-    with col_left:
-        # 各持有期收益分布
-        returns_data = {
-            "持有期": ["5日", "10日", "20日", f"{extend_days}日"],
-            "平均收益": [avg_return_5d, avg_return_10d, avg_return_20d, avg_total]
-        }
-        fig_bar = px.bar(
-            x=returns_data["持有期"], 
-            y=returns_data["平均收益"],
-            color=returns_data["平均收益"],
-            color_continuous_scale=["#2e7d32", "#e24a4a"],
-            title="不同持有期平均收益(%)"
-        )
-        fig_bar.update_layout(showlegend=False, height=300)
-        fig_bar.update_yaxes(title="收益(%)")
-        st.plotly_chart(fig_bar, use_container_width=True)
-    
-    with col_right:
-        # 收益分布直方图
-        fig_hist = px.histogram(
-            x=[m["total_return"] for m in matches],
-            nbins=20,
-            title="20日收益分布直方图",
-            labels={"x": "收益(%)", "y": "次数"}
-        )
-        fig_hist.add_vline(x=0, line_dash="dash", line_color="gray")
-        fig_hist.add_vline(x=avg_total, line_dash="solid", line_color="#1f77b4",
-                          annotation_text=f"均值: {avg_total:.1f}%")
-        fig_hist.update_layout(height=300, showlegend=False)
-        st.plotly_chart(fig_hist, use_container_width=True)
-    
-    # 详细匹配表
-    st.subheader(f"📋 Top {len(matches)} 相似形态详情")
-    
-    detail_df = pd.DataFrame([{
-        "序号": i+1,
-        "匹配日期": m["date"].strftime("%Y-%m-%d"),
-        "相似度": f"{m['similarity']:.2%}",
-        "5日收益": f"{m['return_5d']:+.2f}%",
-        "10日收益": f"{m['return_10d']:+.2f}%",
-        "20日收益": f"{m['total_return']:+.2f}%",
-        "波动率": f"{m['volatility']:.2f}%",
-        "结果": "✅ 上涨" if m["is_up"] else "❌ 下跌"
-    } for i, m in enumerate(matches)])
-    
-    st.dataframe(detail_df, use_container_width=True, hide_index=True)
-    
-    # 导出CSV
-    csv_data = detail_df.to_csv(index=False).encode("utf-8-sig")
-    st.download_button(
-        "📥 导出结果为CSV",
-        csv_data,
-        f"形态匹配结果_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-        "text/csv",
-        key="download-csv"
-    )
-
-# ===================== 主界面 =====================
+# ===================== 主程序 =====================
 def main():
     # 标题
     st.markdown('<p class="main-header">🎯 智图忆市 Pro</p>', unsafe_allow_html=True)
