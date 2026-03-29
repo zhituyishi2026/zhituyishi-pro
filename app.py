@@ -1220,22 +1220,45 @@ def main():
         st.subheader("🔍 形态检测")
         detect_pattern = st.checkbox("自动检测常见形态", True)
         
-        # 策略回测设置
-        st.markdown("---")
-        with st.expander("📉 策略回测", expanded=False):
-            st.subheader("回测设置")
-            backtest_patterns = detect_patterns(pd.DataFrame(), window=1)  # 获取所有形态名称
-            pattern_list = ["双底", "双顶", "上升三角形", "下降三角形", "头肩顶", "头肩底", 
+        # ===== 策略回测设置（放在 expander 外层，保证能跨 render 检测）=====
+        BACKTEST_PATTERN_LIST = ["双底", "双顶", "上升三角形", "下降三角形", "头肩顶", "头肩底",
                            "上升旗形", "下降旗形", "上升楔形", "下降楔形", "矩形整理", "杯柄形态",
                            "看涨吞没", "看跌吞没", "早晨之星", "黄昏之星", "锤子线", "上吊线",
-                           "射击之星", "看涨孕育线", "看跌孕育线", "三白兵", "三乌鸦", 
-                           "向上跳空", "向下跳空", "均线多头排列", "均线空头排列", "均线金叉", 
-                           "均线死叉", "RSI超卖", "RSI超买", "MACD金叉", "MACD死叉", 
+                           "射击之星", "看涨孕育线", "看跌孕育线", "三白兵", "三乌鸦",
+                           "向上跳空", "向下跳空", "均线多头排列", "均线空头排列", "均线金叉",
+                           "均线死叉", "RSI超卖", "RSI超买", "MACD金叉", "MACD死叉",
                            "BOLL上轨突破", "BOLL下轨突破"]
+        
+        with st.expander("📉 策略回测", expanded=False):
+            st.subheader("回测设置")
+            # 默认值保留
+            st.session_state.setdefault("bt_pattern", BACKTEST_PATTERN_LIST[0])
+            st.session_state.setdefault("bt_holding", 20)
             
-            backtest_pattern = st.selectbox("选择回测策略", pattern_list, key="backtest_pattern_select")
-            backtest_holding = st.slider("持有天数", 5, 60, 20, key="backtest_holding_slider")
+            default_idx = BACKTEST_PATTERN_LIST.index(st.session_state["bt_pattern"])
+            backtest_pattern = st.selectbox(
+                "选择回测策略", BACKTEST_PATTERN_LIST,
+                index=default_idx,
+                key="backtest_pattern_select"
+            )
+            backtest_holding = st.slider(
+                "持有天数", 5, 60,
+                value=st.session_state["bt_holding"],
+                key="backtest_holding_slider"
+            )
             backtest_btn = st.button("🚀 开始回测", key="backtest_btn", use_container_width=True)
+        
+        # 持久化用户选择（按钮点击后下次 render 仍保留）
+        st.session_state["bt_pattern"] = st.session_state.get("backtest_pattern_select", BACKTEST_PATTERN_LIST[0])
+        st.session_state["bt_holding"] = st.session_state.get("backtest_holding_slider", 20)
+        
+        # ===== 回测触发：sidebar 按钮触发 =====
+        # backtest_btn 在 expander 内，Streamlit 会自动在 session_state 中置 True
+        # 我们在这里统一处理两个回测入口（sidebar 和 main area）
+        _backtest_triggered = backtest_btn or st.session_state.get("_backtest_from_main", False)
+        _backtest_pattern_val = st.session_state.get("backtest_pattern_select", BACKTEST_PATTERN_LIST[0])
+        _backtest_holding_val = st.session_state.get("backtest_holding_slider", 20)
+        st.session_state["_backtest_from_main"] = False  # 用完即重置
         
         find_btn = st.button("🔍 开始分析", type="primary", use_container_width=True)
     
