@@ -798,6 +798,55 @@ def show_backtest_results(backtest_result):
     )
 
 # ===================== PDF报告生成 =====================
+def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma=True, show_vol=True, show_macd=True, title="K线图"):
+    """绘制K线图表"""
+    fig = make_subplots(
+        rows=3, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.05,
+        row_heights=[0.6, 0.2, 0.2],
+        specs=[[{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": False}]]
+    )
+    
+    # K线
+    fig.add_trace(
+        go.Candlestick(
+            x=df["date"],
+            open=df["open"],
+            high=df["high"],
+            low=df["low"],
+            close=df["close"],
+            name="K线"
+        ),
+        row=1, col=1
+    )
+    
+    # 均线
+    if show_ma:
+        for ma_col, ma_name in [("ma5", "MA5"), ("ma10", "MA10"), ("ma20", "MA20")]:
+            if ma_col in df.columns:
+                fig.add_trace(
+                    go.Scatter(x=df["date"], y=df[ma_col], name=ma_name, mode="lines"),
+                    row=1, col=1
+                )
+    
+    # 成交量
+    if show_vol:
+        fig.add_trace(
+            go.Bar(x=df["date"], y=df["volume"], name="成交量", marker_color="rgba(100,100,100,0.3)"),
+            row=2, col=1
+        )
+    
+    # MACD
+    if show_macd and "macd" in df.columns:
+        fig.add_trace(
+            go.Scatter(x=df["date"], y=df["macd"], name="MACD", mode="lines"),
+            row=3, col=1
+        )
+    
+    fig.update_layout(height=500, title_text=title, hovermode="x unified")
+    return fig
+
 def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matches=None):
     """
     生成PDF分析报告（简化版）
