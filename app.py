@@ -1003,6 +1003,7 @@ def main():
         st.plotly_chart(fig_current, use_container_width=True)
         
         # ===== 第二部分：形态检测 =====
+        patterns = {}  # 初始化
         if detect_pattern:
             st.markdown("---")
             st.subheader("🔍 当前形态检测")
@@ -1029,6 +1030,7 @@ def main():
         st.markdown("---")
         st.subheader(f"🔎 历史相似形态匹配 (模板: 近 {pattern_days} 日 → 观察: 后 {extend_days} 日)")
         
+        matches = []  # 初始化
         with st.spinner("正在匹配历史形态..."):
             matches = find_similar_patterns(df, pattern_days, top_n)
         
