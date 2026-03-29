@@ -800,85 +800,75 @@ def show_backtest_results(backtest_result):
 # ===================== PDF报告生成 =====================
 def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matches=None):
     """
-    生成PDF分析报告（简化版 - 使用HTML转PDF）
+    生成PDF分析报告（简化版）
     """
     try:
-        # 简化版：生成HTML内容，然后转为PDF
-        html_content = f"""
-        <html>
-        <head>
-            <meta charset="utf-8">
-            <style>
-                body {{ font-family: Arial; margin: 20px; }}
-                h1 {{ color: #1f77b4; text-align: center; }}
-                h2 {{ color: #1f77b4; margin-top: 20px; }}
-                table {{ border-collapse: collapse; width: 100%; margin: 10px 0; }}
-                th, td {{ border: 1px solid #ddd; padding: 8px; text-align: center; }}
-                th {{ background-color: #1f77b4; color: white; }}
-                .warning {{ color: red; font-weight: bold; }}
-            </style>
-        </head>
-        <body>
-            <h1>智图忆市 分析报告</h1>
-            <p><strong>标的:</strong> {selected_stock}</p>
-            <p><strong>生成时间:</strong> {datetime.now().strftime('%Y年%m月%d日 %H:%M:%S')}</p>
-            
-            <h2>当前行情摘要</h2>
-            <table>
-                <tr><th>指标</th><th>数值</th></tr>
-                <tr><td>最新价</td><td>{df.iloc[-1]['close']:.2f}</td></tr>
-                <tr><td>涨跌幅</td><td>{(df.iloc[-1]['close'] - df.iloc[-2]['close']) / df.iloc[-2]['close'] * 100:+.2f}%</td></tr>
-                <tr><td>最高价</td><td>{df.iloc[-1]['high']:.2f}</td></tr>
-                <tr><td>最低价</td><td>{df.iloc[-1]['low']:.2f}</td></tr>
-            </table>
-            
-            <h2>形态检测结果</h2>
-            <p>检测到的形态数量: {len(patterns) if patterns else 0}</p>
-            
-            <h2>免责声明</h2>
-            <p class="warning">本工具仅供学习复盘研究，不构成任何投资建议。股市有风险，投资需谨慎。</p>
-        </body>
-        </html>
-        """
+        from reportlab.pdfgen import canvas
         
-        # 使用 weasyprint 或 pdfkit 转换（如果可用）
-        try:
-            from weasyprint import HTML, CSS
-            import io as io_module
-            
-            pdf_bytes = HTML(string=html_content).write_pdf()
-            return pdf_bytes
-        except:
-            # 备用方案：返回简单的文本PDF
-            from reportlab.lib.pagesizes import A4
-            from reportlab.pdfgen import canvas
-            import io as io_module
-            
-            buffer = io_module.BytesIO()
-            c = canvas.Canvas(buffer, pagesize=A4)
-            c.setFont("Helvetica", 12)
-            
-            y = 750
-            c.drawString(100, y, "ZHITU YISHI - Analysis Report")
-            y -= 30
-            c.drawString(100, y, f"Stock: {selected_stock}")
-            y -= 20
-            c.drawString(100, y, f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-            y -= 40
-            
-            c.drawString(100, y, "Current Price: {:.2f}".format(df.iloc[-1]['close']))
-            y -= 20
-            c.drawString(100, y, "Patterns Detected: {}".format(len(patterns) if patterns else 0))
-            y -= 40
-            
-            c.drawString(100, y, "Disclaimer: For research only. Not investment advice.")
-            
-            c.save()
-            buffer.seek(0)
-            return buffer.getvalue()
-            
+        buffer = io_module.BytesIO()
+        c = canvas.Canvas(buffer, pagesize=A4)
+        width, height = A4
+        
+        # 标题
+        c.setFont("Helvetica-Bold", 20)
+        c.drawString(50, height - 50, "ZHITU YISHI - Analysis Report")
+        
+        # 基本信息
+        c.setFont("Helvetica", 12)
+        y = height - 100
+        c.drawString(50, y, f"Stock: {selected_stock}")
+        y -= 20
+        c.drawString(50, y, f"Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        y -= 40
+        
+        # 当前行情
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(50, y, "Current Market")
+        y -= 20
+        
+        c.setFont("Helvetica", 11)
+        last_price = df.iloc[-1]['close']
+        prev_price = df.iloc[-2]['close'] if len(df) > 1 else last_price
+        change_pct = (last_price - prev_price) / prev_price * 100
+        
+        c.drawString(50, y, f"Latest Price: {last_price:.2f}")
+        y -= 15
+        c.drawString(50, y, f"Change: {change_pct:+.2f}%")
+        y -= 15
+        c.drawString(50, y, f"High: {df.iloc[-1]['high']:.2f}")
+        y -= 15
+        c.drawString(50, y, f"Low: {df.iloc[-1]['low']:.2f}")
+        y -= 40
+        
+        # 形态检测
+        c.setFont("Helvetica-Bold", 14)
+        c.drawString(50, y, "Patterns Detected")
+        y -= 20
+        
+        c.setFont("Helvetica", 11)
+        if patterns:
+            pattern_count = len(patterns)
+            c.drawString(50, y, f"Total: {pattern_count} patterns")
+        else:
+            c.drawString(50, y, "No patterns detected")
+        y -= 40
+        
+        # 免责声明
+        c.setFont("Helvetica-Bold", 12)
+        c.drawString(50, y, "Disclaimer")
+        y -= 15
+        
+        c.setFont("Helvetica", 10)
+        c.drawString(50, y, "This tool is for research only. Not investment advice.")
+        y -= 15
+        c.drawString(50, y, "Stock market has risks. Invest with caution.")
+        
+        c.save()
+        buffer.seek(0)
+        return buffer.getvalue()
+        
     except Exception as e:
-        st.error(f"PDF生成失败: {str(e)}")
+        st.error(f"PDF generation failed: {str(e)}")
         return None
 
 # ===================== 主程序 =====================
