@@ -1069,17 +1069,69 @@ def main():
             
             patterns = detect_patterns(df, window=pattern_days)
             
+            # 形态颜色分类
+            PATTERN_COLORS = {
+                # 经典反转形态 - 红色系（看涨）
+                "双底":        {"bg": "#fff0f0", "border": "#e24a4a", "icon": "🔴"},
+                "头肩底":      {"bg": "#fff0f0", "border": "#e24a4a", "icon": "🔴"},
+                "早晨之星":    {"bg": "#fff0f0", "border": "#e24a4a", "icon": "🔴"},
+                "锤子线":      {"bg": "#fff0f0", "border": "#e24a4a", "icon": "🔴"},
+                "看涨吞没":    {"bg": "#fff0f0", "border": "#e24a4a", "icon": "🔴"},
+                "看涨孕育线":  {"bg": "#fff0f0", "border": "#e24a4a", "icon": "🔴"},
+                "三白兵":      {"bg": "#fff0f0", "border": "#e24a4a", "icon": "🔴"},
+                "杯柄形态":    {"bg": "#fff0f0", "border": "#e24a4a", "icon": "🔴"},
+                # 经典顶部形态 - 绿色系（看跌）
+                "双顶":        {"bg": "#f0fff4", "border": "#2e7d32", "icon": "🟢"},
+                "头肩顶":      {"bg": "#f0fff4", "border": "#2e7d32", "icon": "🟢"},
+                "黄昏之星":    {"bg": "#f0fff4", "border": "#2e7d32", "icon": "🟢"},
+                "上吊线":      {"bg": "#f0fff4", "border": "#2e7d32", "icon": "🟢"},
+                "射击之星":    {"bg": "#f0fff4", "border": "#2e7d32", "icon": "🟢"},
+                "看跌吞没":    {"bg": "#f0fff4", "border": "#2e7d32", "icon": "🟢"},
+                "看跌孕育线":  {"bg": "#f0fff4", "border": "#2e7d32", "icon": "🟢"},
+                "三乌鸦":      {"bg": "#f0fff4", "border": "#2e7d32", "icon": "🟢"},
+                # 整理形态 - 蓝色系（中性）
+                "上升三角形":  {"bg": "#f0f4ff", "border": "#1f77b4", "icon": "🔵"},
+                "下降三角形":  {"bg": "#f0f4ff", "border": "#1f77b4", "icon": "🔵"},
+                "矩形整理":    {"bg": "#f0f4ff", "border": "#1f77b4", "icon": "🔵"},
+                "上升旗形":    {"bg": "#f0f4ff", "border": "#1f77b4", "icon": "🔵"},
+                "下降旗形":    {"bg": "#f0f4ff", "border": "#1f77b4", "icon": "🔵"},
+                "上升楔形":    {"bg": "#f0f4ff", "border": "#1f77b4", "icon": "🔵"},
+                "下降楔形":    {"bg": "#f0f4ff", "border": "#1f77b4", "icon": "🔵"},
+                # 均线/指标形态 - 橙色系
+                "均线多头排列": {"bg": "#fff8f0", "border": "#ff7f0e", "icon": "🟠"},
+                "均线空头排列": {"bg": "#fff8f0", "border": "#ff7f0e", "icon": "🟠"},
+                "均线金叉":    {"bg": "#fff8f0", "border": "#ff7f0e", "icon": "🟠"},
+                "均线死叉":    {"bg": "#fff8f0", "border": "#ff7f0e", "icon": "🟠"},
+                "RSI超卖":     {"bg": "#fff8f0", "border": "#ff7f0e", "icon": "🟠"},
+                "RSI超买":     {"bg": "#fff8f0", "border": "#ff7f0e", "icon": "🟠"},
+                "MACD金叉":    {"bg": "#fff8f0", "border": "#ff7f0e", "icon": "🟠"},
+                "MACD死叉":    {"bg": "#fff8f0", "border": "#ff7f0e", "icon": "🟠"},
+                "BOLL上轨突破": {"bg": "#fff8f0", "border": "#ff7f0e", "icon": "🟠"},
+                "BOLL下轨突破": {"bg": "#fff8f0", "border": "#ff7f0e", "icon": "🟠"},
+                "向上跳空":    {"bg": "#fff8f0", "border": "#ff7f0e", "icon": "🟠"},
+                "向下跳空":    {"bg": "#fff8f0", "border": "#ff7f0e", "icon": "🟠"},
+            }
+            
             if patterns:
                 cols = st.columns(min(len(patterns), 4))
                 for i, (name, info) in enumerate(patterns.items()):
                     with cols[i % 4]:
-                        signal_color = "up" if "看涨" in info["信号"] else "down"
+                        # 获取颜色配置，默认灰色
+                        color = PATTERN_COLORS.get(name, {"bg": "#f8f8f8", "border": "#888", "icon": "⚪"})
+                        signal_text_color = "#e24a4a" if "看涨" in info["信号"] else "#2e7d32" if "看跌" in info["信号"] else "#888"
                         st.markdown(f"""
-                        <div class="match-card">
-                            <h4>{name}</h4>
-                            <p class="{signal_color}">信号: {info['信号']}</p>
-                            <p>置信度: {info['置信度']:.0%}</p>
-                            <p style="font-size:0.85rem; color:#666;">{info['描述']}</p>
+                        <div style="background:{color['bg']}; padding:12px; border-radius:10px;
+                                    border-left:5px solid {color['border']}; margin:6px 0;">
+                            <h4 style="margin:0 0 6px 0;">{color['icon']} {name}</h4>
+                            <p style="margin:2px 0; color:{signal_text_color}; font-weight:bold;">
+                                {info['信号']}
+                            </p>
+                            <p style="margin:2px 0; color:#555;">
+                                置信度: {info['置信度']:.0%}
+                            </p>
+                            <p style="margin:2px 0; font-size:0.82rem; color:#666;">
+                                {info['描述']}
+                            </p>
                         </div>
                         """, unsafe_allow_html=True)
             else:
