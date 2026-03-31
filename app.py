@@ -1693,31 +1693,28 @@ def main():
             else:
                 st.warning("该形态历史数据不足，无法回测")
         
-        # ===== 形态胜率对比（移至回测区域下方）=====
-        if patterns:
+        # ===== 形态胜率对比（一键对比当前检测到的形态）=====
+        if patterns and len(patterns) >= 2:
             st.markdown("#### 📊 形态胜率对比")
-            selected_patterns = st.multiselect(
-                "选择形态进行对比",
-                list(patterns.keys()),
-                default=list(patterns.keys())[:3] if len(patterns) >= 3 else list(patterns.keys()),
-                key="pattern_compare_select"
-            )
-            if st.button("📊 对比选中形态", key="pattern_compare_btn"):
-                if selected_patterns:
-                    with st.spinner("正在对比..."):
-                        compare_results = []
-                        for pname in selected_patterns:
-                            result = backtest_pattern_strategy(df, pname, holding_days=20)
-                            if result:
-                                compare_results.append({
-                                    "形态": pname,
-                                    "交易次数": result["total_trades"],
-                                    "胜率": f"{result['win_rate']:.1f}%",
-                                    "平均收益": f"{result['avg_profit']:+.2f}%",
-                                    "夏普比率": f"{result['sharpe_ratio']:.2f}"
-                                })
+            st.caption(f"已检测到 {len(patterns)} 种形态，一键对比历史胜率")
+            
+            if st.button(f"🚀 一键对比 {len(patterns)} 种形态", key="pattern_compare_btn", type="primary"):
+                with st.spinner(f"正在回测 {len(patterns)} 种形态..."):
+                    compare_results = []
+                    for pname in patterns.keys():
+                        result = backtest_pattern_strategy(df, pname, holding_days=20)
+                        if result:
+                            compare_results.append({
+                                "形态": pname,
+                                "交易次数": result["total_trades"],
+                                "胜率": f"{result['win_rate']:.1f}%",
+                                "平均收益": f"{result['avg_profit']:+.2f}%",
+                                "夏普比率": f"{result['sharpe_ratio']:.2f}"
+                            })
                     if compare_results:
                         st.session_state["pattern_compare_results"] = compare_results
+                    else:
+                        st.session_state["pattern_compare_results"] = None
             
             if st.session_state.get("pattern_compare_results"):
                 compare_df = pd.DataFrame(st.session_state["pattern_compare_results"])
@@ -1738,6 +1735,11 @@ def main():
                     height=350
                 )
                 st.plotly_chart(fig_cmp, use_container_width=True)
+            elif not st.session_state.get("pattern_compare_results") and 'pattern_compare_btn' in st.session_state:
+                st.info("这些形态历史数据不足，无法回测")
+        elif patterns and len(patterns) == 1:
+            st.markdown("#### 📊 形态胜率对比")
+            st.info(f"只检测到 1 种形态（{list(patterns.keys())[0]}），无需对比")
         
         # ===== 第五部分：生成完整报告 =====
         st.markdown("---")
