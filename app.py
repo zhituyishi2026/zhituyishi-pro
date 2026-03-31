@@ -1087,39 +1087,36 @@ def main():
         st.subheader("📊 选择标的")
         
         # ===== P0: 自定义股票代码输入 =====
-        custom_code_input = st.text_input(
-            "自定义股票代码",
-            value=st.session_state.get("custom_code_input", ""),
-            placeholder="输入股票代码，如 sh000001",
-            help="支持格式：sh + 6位数字（上证）或 sz + 6位数字（深证），如 sh000001、sz399006",
-            key="custom_code_input"
+        # 两种模式：下拉选择 或 手动输入，用 radio 切换
+        input_mode = st.radio(
+            "选股方式",
+            ["📋 预设标的", "✏️ 自定义代码"],
+            horizontal=True,
+            index=0
         )
-        custom_error = st.session_state.get("custom_code_error", None)
         
-        # 验证并处理自定义股票代码
-        process_custom = False
-        if custom_code_input:
-            custom_code_input_clean = custom_code_input.strip().lower()
-            import re
-            if re.match(r"^(sh|sz)\d{6}$", custom_code_input_clean):
-                st.session_state["custom_code_error"] = None
-                st.session_state["custom_code_input"] = custom_code_input_clean
-                process_custom = True
+        import re
+        if input_mode == "✏️ 自定义代码":
+            custom_code_input = st.text_input(
+                "股票代码",
+                placeholder="如 sh000001 或 sz399006",
+                help="sh=上证，sz=深证，后接6位数字",
+                key="custom_code_input"
+            )
+            if custom_code_input:
+                clean = custom_code_input.strip().lower()
+                if re.match(r"^(sh|sz)\d{6}$", clean):
+                    selected = f"自选 {clean.upper()}"
+                    code = clean
+                else:
+                    st.error("⚠️ 格式错误，请输入如 sh000001 或 sz399006")
+                    selected = list(STOCK_MAP.keys())[0]
+                    code = list(STOCK_MAP.values())[0]
             else:
-                st.session_state["custom_code_error"] = "⚠️ 股票代码格式错误，请输入 sh/sz + 6位数字，如 sh000001"
-        
-        # 显示自定义代码错误提示
-        if st.session_state.get("custom_code_error"):
-            st.error(st.session_state["custom_code_error"])
-        
-        # 优先使用自定义代码，否则使用下拉选择
-        if process_custom or st.session_state.get("use_custom_code", False):
-            selected = f"【自选】{custom_code_input_clean.upper()}"
-            code = custom_code_input_clean
-            st.session_state["use_custom_code"] = True
-            st.session_state["custom_selected"] = selected
+                st.caption("请输入股票代码后点击开始分析")
+                selected = list(STOCK_MAP.keys())[0]
+                code = list(STOCK_MAP.values())[0]
         else:
-            st.session_state["use_custom_code"] = False
             selected = st.selectbox("股票/指数", list(STOCK_MAP.keys()), label_visibility="collapsed")
             code = STOCK_MAP[selected]
         
