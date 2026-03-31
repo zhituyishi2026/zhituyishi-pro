@@ -922,7 +922,7 @@ def show_stats_panel(matches, window, extend_days):
         win_rate = up_count / len(returns_20d) * 100 if returns_20d else 0
         st.metric("上涨胜率", f"{win_rate:.0f}%", f"盈利 {up_count} 次 / {len(matches)} 次")
 
-def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma=True, show_vol=True, show_macd=True, title="K线图", dark_mode=True):
+def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma=True, show_vol=True, show_macd=True, show_boll=False, show_rsi=False, show_kdj=False, title="K线图", dark_mode=True):
     """绘制K线图表，默认深色模式"""
     # 固定深色配色，与页面背景统一
     bg_color = "#0e1117"
@@ -931,13 +931,34 @@ def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma
     up_color = "#3fb950"      # 上涨 - 绿色
     down_color = "#f85149"    # 下跌 - 红色
     ma_colors = ["#ff9800", "#58a6ff", "#bc8cff"]  # MA5/10/20
-    
+
+    # 计算需要的行数
+    extra_rows = sum([show_rsi, show_kdj])
+    total_rows = 3 + extra_rows
+
+    # 计算 row_heights：K线(0.5) + 成交量(0.15) + MACD(0.15) + RSI(0.15) + KDJ(0.15)
+    row_heights = [0.5, 0.15, 0.15]
+    if show_rsi:
+        row_heights.append(0.12)
+    if show_kdj:
+        row_heights.append(0.12)
+
+    specs = [
+        [{"secondary_y": False}],
+        [{"secondary_y": False}],
+        [{"secondary_y": False}],
+    ]
+    if show_rsi:
+        specs.append([{"secondary_y": False}])
+    if show_kdj:
+        specs.append([{"secondary_y": False}])
+
     fig = make_subplots(
-        rows=3, cols=1,
+        rows=total_rows, cols=1,
         shared_xaxes=True,
         vertical_spacing=0.05,
-        row_heights=[0.6, 0.2, 0.2],
-        specs=[[{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": False}]]
+        row_heights=row_heights,
+        specs=specs
     )
     
     # K线配色：根据涨跌设置颜色
@@ -1010,6 +1031,38 @@ def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma
             row=3, col=1
         )
     
+    # BOLL 布林带（叠加在K线图 row=1 上）
+    if show_boll and "boll_upper" in df.columns:
+        for col, name, color in [("boll_upper", "BOLL上轨", "#ff9800"), ("boll_mid", "BOLL中轨", "#888888"), ("boll_lower", "BOLL下轨", "#ff9800")]:
+            fig.add_trace(go.Scatter(
+                x=df["date"], y=df[col], name=name, mode="lines",
+                line=dict(color=color, width=1, dash="dash")
+            ), row=1, col=1)
+
+    # RSI（新增 row）
+    rsi_row = None
+    kdj_row = None
+    _extra = 3
+    if show_rsi and "rsi" in df.columns:
+        _extra += 1
+        rsi_row = _extra
+        fig.add_trace(go.Scatter(
+            x=df["date"], y=df["rsi"], name="RSI", mode="lines",
+            line=dict(color="#ff9800", width=1.5)
+        ), row=rsi_row, col=1)
+        fig.add_hline(y=70, line_dash="dash", line_color="#f85149", row=rsi_row, col=1)
+        fig.add_hline(y=30, line_dash="dash", line_color="#3fb950", row=rsi_row, col=1)
+
+    # KDJ（新增 row）
+    if show_kdj and "kdj_k" in df.columns:
+        _extra += 1
+        kdj_row = _extra
+        for col, name, color in [("kdj_k", "K", "#ff9800"), ("kdj_d", "D", "#58a6ff"), ("kdj_j", "J", "#bc8cff")]:
+            fig.add_trace(go.Scatter(
+                x=df["date"], y=df[col], name=name, mode="lines",
+                line=dict(color=color, width=1.5)
+            ), row=kdj_row, col=1)
+
     # 深色模式下自定义 K线 颜色映射（只更新 Candlestick trace）
     fig.update_traces(
         increasing_line_color=up_color,
@@ -1018,29 +1071,32 @@ def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma
         decreasing_fillcolor=down_color,
         selector={"type": "candlestick"}
     )
-    
+
+    # 动态构建 yaxis 配置
+    yaxis_cfg = {}
+    for i in range(1, total_rows + 1):
+        key = "yaxis" if i == 1 else f"yaxis{i}"
+        yaxis_cfg[key] = dict(gridcolor=grid_color, color=text_color)
+
     fig.update_layout(
-        height=500,
+        height=400 + 120 * extra_rows,
         title_text=title,
         hovermode="x unified",
         paper_bgcolor=bg_color,
         plot_bgcolor=bg_color,
         font=dict(color=text_color),
-        xaxis=dict(gridcolor=grid_color, color=text_color),
-        yaxis=dict(gridcolor=grid_color, color=text_color),
-        yaxis2=dict(gridcolor=grid_color, color=text_color),
-        yaxis3=dict(gridcolor=grid_color, color=text_color),
         showlegend=True,
         legend=dict(
             orientation="h", yanchor="bottom", y=1.02,
             xanchor="right", x=1,
             bgcolor="rgba(0,0,0,0)"
-        )
+        ),
+        **yaxis_cfg
     )
-    for i in range(1, 4):
+    for i in range(1, total_rows + 1):
         fig.update_xaxes(gridcolor=grid_color, color=text_color, row=i, col=1)
         fig.update_yaxes(gridcolor=grid_color, color=text_color, row=i, col=1)
-    
+
     return fig
 
 def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matches=None):
@@ -1059,6 +1115,7 @@ def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matc
         fig_kline = plot_kline_with_pattern(
             df_plot, 0,
             show_ma=True, show_vol=True, show_macd=True,
+            show_boll=True, show_rsi=True, show_kdj=True,
             title=f"{selected_stock} - K线图"
         )
         kline_html = fig_kline.to_html(full_html=False, include_plotlyjs=False)
@@ -1411,6 +1468,7 @@ def main():
         fig_current = plot_kline_with_pattern(
             df.tail(80), 0,
             show_ma=show_ma, show_vol=show_vol, show_macd=show_macd,
+            show_boll=show_boll, show_rsi=show_rsi, show_kdj=show_kdj,
             title=f"{selected} - 近80日K线"
         )
         st.plotly_chart(fig_current, use_container_width=True)
@@ -1564,6 +1622,7 @@ def main():
                         seg_df, pattern_days,
                         match_date=m["date"], sim_score=m["similarity"],
                         show_ma=show_ma, show_vol=show_vol, show_macd=show_macd,
+                        show_boll=show_boll, show_rsi=show_rsi, show_kdj=show_kdj,
                         title=f"历史匹配 #{i+1}"
                     )
                     st.plotly_chart(fig_match, use_container_width=True)
