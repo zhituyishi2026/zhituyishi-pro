@@ -659,15 +659,17 @@ def backtest_pattern_strategy(df, pattern_name, holding_days=20):
             if i <= last_trade_end:
                 continue
             
-            window_df = df.iloc[i-20:i].copy()
+            window_df = df.iloc[i-20:i].reset_index(drop=True).copy()
             patterns = detect_patterns(window_df, window=20)
             
             if pattern_name in patterns:
                 # 形态出现，记录买入点
+                # 买入价 = 形态触发日的收盘价（即第i根K线的收盘价）
                 buy_price = df.iloc[i]["close"]
                 buy_date = df.iloc[i]["date"]
                 
                 # 计算持有期收益
+                # 卖出索引 = 买入后持有 holding_days 天
                 sell_idx = min(i + holding_days, len(df) - 1)
                 sell_price = df.iloc[sell_idx]["close"]
                 sell_date = df.iloc[sell_idx]["date"]
@@ -1419,12 +1421,14 @@ def main():
     if find_btn or "last_code" in st.session_state:
         if find_btn:
             st.session_state["last_code"] = code
+            st.session_state["last_selected"] = selected
             st.session_state["last_pattern"] = pattern_days
             st.session_state["last_extend"] = extend_days
             st.session_state["last_top_n"] = top_n
             st.session_state["last_max_history"] = max_history
         
         code = st.session_state.get("last_code", code)
+        selected = st.session_state.get("last_selected", selected)
         pattern_days = st.session_state.get("last_pattern", pattern_days)
         extend_days = st.session_state.get("last_extend", extend_days)
         top_n = st.session_state.get("last_top_n", top_n)
