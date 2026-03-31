@@ -1390,16 +1390,56 @@ def main():
                 key="download-backtest-csv"
             )
         
-        # ===== 第五部分：PDF报告生成 =====
+        # ===== 第五部分：报告生成 =====
         st.markdown("---")
         st.subheader("📄 生成分析报告")
 
-        if st.button("📄 生成分析报告", key="generate_report_btn", width='stretch'):
+        col_fmt, col_btn = st.columns([2, 1])
+        with col_fmt:
+            report_format = st.selectbox(
+                "报告格式",
+                ["📄 TXT 文本", "📊 CSV 表格", "🌐 HTML 网页"],
+                label_visibility="collapsed"
+            )
+        with col_btn:
+            gen_btn = st.button("📄 生成报告", key="generate_report_btn", width='stretch')
+
+        if gen_btn:
             backtest_for_report = st.session_state.get("last_backtest", None)
             report_bytes = generate_pdf_report(df, selected, patterns, backtest_for_report, matches)
             if report_bytes:
-                st.session_state["report_bytes"] = report_bytes
-                st.session_state["report_name"] = f"智图忆市分析报告_{selected}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
+                # 根据格式转换内容
+                if report_format == "🌐 HTML 网页":
+                    # 转为HTML格式
+                    text_content = report_bytes.decode('utf-8')
+                    html_content = f"""<!DOCTYPE html>
+<html><head><meta charset="utf-8">
+<title>智图忆市分析报告 - {selected}</title>
+<style>
+body{{font-family:Arial,sans-serif;max-width:800px;margin:40px auto;padding:20px;background:#f9f9f9;}}
+h1{{color:#1f77b4;}} pre{{background:#fff;padding:20px;border-radius:8px;border:1px solid #ddd;white-space:pre-wrap;}}
+</style></head>
+<body><h1>📊 智图忆市分析报告</h1><pre>{text_content}</pre></body></html>"""
+                    final_bytes = html_content.encode('utf-8')
+                    ext, mime = "html", "text/html"
+                elif report_format == "📊 CSV 表格":
+                    # 转为CSV格式（提取关键数据）
+                    lines = report_bytes.decode('utf-8').split('\n')
+                    csv_lines = ["项目,内容"]
+                    for line in lines:
+                        if ':' in line and not line.startswith('='):
+                            parts = line.split(':', 1)
+                            csv_lines.append(f'"{parts[0].strip()}","{parts[1].strip()}"')
+                    final_bytes = '\n'.join(csv_lines).encode('utf-8-sig')
+                    ext, mime = "csv", "text/csv"
+                else:
+                    final_bytes = report_bytes
+                    ext, mime = "txt", "text/plain"
+
+                fname = f"智图忆市分析报告_{selected}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
+                st.session_state["report_bytes"] = final_bytes
+                st.session_state["report_name"] = fname
+                st.session_state["report_mime"] = mime
                 st.success("✅ 报告生成成功！")
             else:
                 st.error("❌ 报告生成失败")
@@ -1407,10 +1447,10 @@ def main():
         # 每次render都检查，存在就显示下载按钮
         if st.session_state.get("report_bytes"):
             st.download_button(
-                "📥 下载分析报告",
+                "📥 下载报告",
                 st.session_state["report_bytes"],
                 st.session_state.get("report_name", "报告.txt"),
-                "text/plain",
+                st.session_state.get("report_mime", "text/plain"),
                 key="download-report"
             )
     
