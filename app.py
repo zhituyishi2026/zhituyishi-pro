@@ -139,8 +139,23 @@ def add_indicators(df):
     rs = gain / (loss + 1e-8)
     df["rsi"] = 100 - (100 / (rs + 1))
     
+    # 布林带 (BOLL)
+    df["boll_mid"] = close.rolling(20).mean()
+    boll_std = close.rolling(20).std()
+    df["boll_upper"] = df["boll_mid"] + 2 * boll_std
+    df["boll_lower"] = df["boll_mid"] - 2 * boll_std
+    
+    # KDJ
+    low_min = df["low"].rolling(9).min()
+    high_max = df["high"].rolling(9).max()
+    rsv = (close - low_min) / (high_max - low_min + 1e-8) * 100
+    df["kdj_k"] = rsv.ewm(com=2).mean()
+    df["kdj_d"] = df["kdj_k"].ewm(com=2).mean()
+    df["kdj_j"] = 3 * df["kdj_k"] - 2 * df["kdj_d"]
+    
     # 成交量均线
     df["vol_ma5"] = df["volume"].rolling(5).mean()
+    df["vol_ma10"] = df["volume"].rolling(10).mean()
     
     return df
 
@@ -988,8 +1003,54 @@ Stock market has risks. Invest with caution.
         print(f"DEBUG: Exception in generate_pdf_report: {str(e)}")
         return None
 
+# ===================== 密码验证 =====================
+def check_password():
+    """密码验证，支持多用户密码"""
+    # 从 Streamlit secrets 读取密码配置
+    # secrets.toml 格式：
+    # [passwords]
+    # demo = "demo888"       # 免费体验密码
+    # pro = "pro2026"        # 付费用户密码
+    # admin = "admin@zhitu"  # 管理员密码
+    
+    if "authenticated" in st.session_state and st.session_state["authenticated"]:
+        return True
+
+    st.markdown('<p class="main-header">🎯 智图忆市 Pro</p>', unsafe_allow_html=True)
+    st.markdown('<p class="sub-header">K线形态量化分析 · 历史相似匹配 · 概率统计决策</p>', unsafe_allow_html=True)
+    st.markdown("---")
+
+    col1, col2, col3 = st.columns([1, 2, 1])
+    with col2:
+        st.markdown("### 🔐 请输入访问密码")
+        pwd = st.text_input("密码", type="password", placeholder="请输入密码", key="pwd_input")
+        if st.button("进入", width="stretch", type="primary"):
+            try:
+                valid_passwords = list(st.secrets.get("passwords", {}).values())
+                if not valid_passwords:
+                    # 本地开发模式：无 secrets 时直接放行
+                    st.session_state["authenticated"] = True
+                    st.rerun()
+                elif pwd in valid_passwords:
+                    st.session_state["authenticated"] = True
+                    st.rerun()
+                else:
+                    st.error("❌ 密码错误，请联系作者获取访问权限")
+            except Exception:
+                # 无 secrets 配置时直接放行（本地开发）
+                st.session_state["authenticated"] = True
+                st.rerun()
+        st.markdown("---")
+        st.caption("📩 购买访问密码请联系作者")
+    return False
+
+
 # ===================== 主程序 =====================
 def main():
+    # 密码验证
+    if not check_password():
+        return
+
     # 标题
     st.markdown('<p class="main-header">🎯 智图忆市 Pro</p>', unsafe_allow_html=True)
     st.markdown('<p class="sub-header">K线形态量化分析 · 历史相似匹配 · 概率统计决策</p>', unsafe_allow_html=True)
@@ -1060,9 +1121,12 @@ def main():
         max_history = st.slider("历史数据量", 300, 1000, 800, help="从过去多少天开始搜索")
         
         st.subheader("📐 图表设置")
-        show_ma = st.checkbox("显示均线 (MA5/10/20)", True)
-        show_vol = st.checkbox("显示成交量", True)
-        show_macd = st.checkbox("显示MACD", True)
+        show_ma = st.checkbox("均线 MA5/10/20/60", True)
+        show_vol = st.checkbox("成交量", True)
+        show_macd = st.checkbox("MACD", True)
+        show_boll = st.checkbox("布林带 BOLL", False)
+        show_rsi = st.checkbox("RSI", False)
+        show_kdj = st.checkbox("KDJ", False)
         
         st.subheader("🔍 形态检测")
         detect_pattern = st.checkbox("自动检测常见形态", True)
