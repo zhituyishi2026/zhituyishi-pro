@@ -950,55 +950,136 @@ def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma
 
 def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matches=None):
     """
-    生成分析报告（文本格式）
+    生成分析报告（HTML格式，含交互图表）
+    返回 (bytes, ext, mime) 元组
     """
     try:
-        # 生成文本内容
-        report_text = f"""
-ZHITU YISHI - Analysis Report
-{'='*50}
+        last = df.iloc[-1]
+        prev = df.iloc[-2] if len(df) > 1 else last
+        change_pct = (last['close'] - prev['close']) / prev['close'] * 100
 
-Stock: {selected_stock}
-Time: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}
+        # ===== 生成K线图HTML =====
+        fig_kline = plot_kline_with_pattern(
+            df.tail(120), 0,
+            show_ma=True, show_vol=True, show_macd=True,
+            title=f"{selected_stock} - K线图"
+        )
+        kline_html = fig_kline.to_html(full_html=False, include_plotlyjs=False)
 
-CURRENT MARKET
-{'='*50}
-Latest Price: {df.iloc[-1]['close']:.2f}
-Change: {(df.iloc[-1]['close'] - df.iloc[-2]['close']) / df.iloc[-2]['close'] * 100:+.2f}%
-High: {df.iloc[-1]['high']:.2f}
-Low: {df.iloc[-1]['low']:.2f}
+        # ===== 生成权益曲线HTML =====
+        equity_html = ""
+        if backtest_result and backtest_result.get("equity_curve"):
+            import plotly.graph_objects as go_eq
+            eq = backtest_result["equity_curve"]
+            fig_eq = go_eq.Figure()
+            fig_eq.add_trace(go_eq.Scatter(
+                y=eq, mode="lines", name="权益曲线",
+                line=dict(color="#3fb950", width=2),
+                fill="tozeroy", fillcolor="rgba(63,185,80,0.1)"
+            ))
+            fig_eq.update_layout(
+                title="策略权益曲线",
+                paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
+                font=dict(color="#c9d1d9"),
+                xaxis=dict(gridcolor="#30363d"), yaxis=dict(gridcolor="#30363d"),
+                height=300
+            )
+            equity_html = fig_eq.to_html(full_html=False, include_plotlyjs=False)
 
-PATTERNS DETECTED
-{'='*50}
-"""
-        
+        # ===== 形态检测表格 =====
+        pattern_rows = ""
         if patterns:
-            report_text += f"Total: {len(patterns)} patterns\n\n"
-            for name, info in list(patterns.items())[:10]:
-                report_text += f"- {name}: {info.get('信号', 'N/A')}\n"
-        else:
-            report_text += "No patterns detected\n"
-        
-        report_text += f"""
+            for name, info in patterns.items():
+                signal = info.get("信号", "")
+                color = "#3fb950" if "看涨" in signal else "#f85149" if "看跌" in signal else "#8b949e"
+                pattern_rows += f"""
+                <tr>
+                    <td>{name}</td>
+                    <td style="color:{color};font-weight:bold">{signal}</td>
+                    <td>{info.get('置信度', 0):.0%}</td>
+                    <td style="color:#8b949e;font-size:0.85em">{info.get('描述', '')}</td>
+                </tr>"""
 
-DISCLAIMER
-{'='*50}
-This tool is for research only. Not investment advice.
-Stock market has risks. Invest with caution.
-"""
-        
-        # 转换为字节
-        report_bytes = report_text.encode('utf-8')
-        
-        # 调试：打印字节长度
-        print(f"DEBUG: Report bytes length = {len(report_bytes)}")
-        
-        if report_bytes and len(report_bytes) > 0:
-            return report_bytes
-        else:
-            print("DEBUG: Report bytes is empty!")
-            return None
-        
+        # ===== 回测统计 =====
+        backtest_section = ""
+        if backtest_result:
+            bt = backtest_result
+            backtest_section = f"""
+            <div class="section">
+                <h2>📈 策略回测结果</h2>
+                <div class="stats-grid">
+                    <div class="stat-card"><div class="stat-val">{bt.get('total_trades', 0)}</div><div class="stat-label">交易次数</div></div>
+                    <div class="stat-card"><div class="stat-val" style="color:#3fb950">{bt.get('win_rate', 0)*100:.1f}%</div><div class="stat-label">胜率</div></div>
+                    <div class="stat-card"><div class="stat-val">{bt.get('avg_return', 0)*100:+.2f}%</div><div class="stat-label">平均收益</div></div>
+                    <div class="stat-card"><div class="stat-val">{bt.get('sharpe_ratio', 0):.2f}</div><div class="stat-label">夏普比率</div></div>
+                </div>
+                {equity_html}
+            </div>"""
+
+        # ===== 拼装完整HTML =====
+        html = f"""<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>智图忆市 Pro - {selected_stock} 分析报告</title>
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<style>
+  * {{ box-sizing: border-box; margin: 0; padding: 0; }}
+  body {{ background: #0e1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; padding: 24px; }}
+  .header {{ border-bottom: 1px solid #30363d; padding-bottom: 16px; margin-bottom: 24px; }}
+  .header h1 {{ color: #58a6ff; font-size: 1.8rem; }}
+  .header .meta {{ color: #8b949e; font-size: 0.9rem; margin-top: 6px; }}
+  .section {{ background: #161b22; border: 1px solid #30363d; border-radius: 10px; padding: 20px; margin-bottom: 20px; }}
+  .section h2 {{ color: #e6edf3; font-size: 1.1rem; margin-bottom: 16px; }}
+  .metrics {{ display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 16px; }}
+  .metric {{ background: #0e1117; border: 1px solid #30363d; border-radius: 8px; padding: 12px 20px; min-width: 120px; }}
+  .metric .val {{ font-size: 1.4rem; font-weight: bold; color: #e6edf3; }}
+  .metric .lbl {{ font-size: 0.8rem; color: #8b949e; margin-top: 4px; }}
+  .up {{ color: #3fb950 !important; }}
+  .down {{ color: #f85149 !important; }}
+  table {{ width: 100%; border-collapse: collapse; font-size: 0.9rem; }}
+  th {{ background: #0e1117; color: #8b949e; padding: 8px 12px; text-align: left; border-bottom: 1px solid #30363d; }}
+  td {{ padding: 8px 12px; border-bottom: 1px solid #21262d; }}
+  tr:hover td {{ background: #1c2128; }}
+  .stats-grid {{ display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 16px; }}
+  .stat-card {{ background: #0e1117; border: 1px solid #30363d; border-radius: 8px; padding: 12px; text-align: center; }}
+  .stat-val {{ font-size: 1.3rem; font-weight: bold; color: #e6edf3; }}
+  .stat-label {{ font-size: 0.8rem; color: #8b949e; margin-top: 4px; }}
+  .disclaimer {{ color: #8b949e; font-size: 0.8rem; border-top: 1px solid #30363d; padding-top: 12px; margin-top: 20px; }}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>🎯 智图忆市 Pro · 分析报告</h1>
+  <div class="meta">标的：{selected_stock} &nbsp;|&nbsp; 生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</div>
+</div>
+
+<div class="section">
+  <h2>📌 当前行情</h2>
+  <div class="metrics">
+    <div class="metric"><div class="val">{last['close']:.2f}</div><div class="lbl">最新价</div></div>
+    <div class="metric"><div class="val {'up' if change_pct >= 0 else 'down'}">{change_pct:+.2f}%</div><div class="lbl">涨跌幅</div></div>
+    <div class="metric"><div class="val">{last['high']:.2f}</div><div class="lbl">最高价</div></div>
+    <div class="metric"><div class="val">{last['low']:.2f}</div><div class="lbl">最低价</div></div>
+  </div>
+  {kline_html}
+</div>
+
+<div class="section">
+  <h2>🔍 形态检测结果</h2>
+  {'<table><thead><tr><th>形态名称</th><th>信号</th><th>置信度</th><th>描述</th></tr></thead><tbody>' + pattern_rows + '</tbody></table>' if pattern_rows else '<p style="color:#8b949e">未检测到明确形态</p>'}
+</div>
+
+{backtest_section}
+
+<div class="disclaimer">
+  ⚠️ 本报告由智图忆市 Pro 自动生成，仅供学习复盘研究，不构成任何投资建议。股市有风险，投资需谨慎。
+</div>
+</body>
+</html>"""
+
+        return html.encode('utf-8')
+
     except Exception as e:
         print(f"DEBUG: Exception in generate_pdf_report: {str(e)}")
         return None
@@ -1451,7 +1532,7 @@ def main():
         with col_fmt:
             report_format = st.selectbox(
                 "报告格式",
-                ["📄 PDF 报告", "📊 CSV 表格", "🌐 HTML 网页"],
+                ["🌐 HTML 图表报告", "📊 CSV 数据表格"],
                 label_visibility="collapsed"
             )
         with col_btn:
@@ -1459,58 +1540,27 @@ def main():
 
         if gen_btn:
             backtest_for_report = st.session_state.get("last_backtest", None)
-            report_bytes = generate_pdf_report(df, selected, patterns, backtest_for_report, matches)
+            with st.spinner("正在生成报告..."):
+                report_bytes = generate_pdf_report(df, selected, patterns, backtest_for_report, matches)
             if report_bytes:
-                # 根据格式转换内容
-                if report_format == "🌐 HTML 网页":
-                    # 转为HTML格式
-                    text_content = report_bytes.decode('utf-8')
-                    html_content = f"""<!DOCTYPE html>
-<html><head><meta charset="utf-8">
-<title>智图忆市分析报告 - {selected}</title>
-<style>
-body{{font-family:Arial,sans-serif;max-width:800px;margin:40px auto;padding:20px;background:#f9f9f9;}}
-h1{{color:#1f77b4;}} pre{{background:#fff;padding:20px;border-radius:8px;border:1px solid #ddd;white-space:pre-wrap;}}
-</style></head>
-<body><h1>📊 智图忆市分析报告</h1><pre>{text_content}</pre></body></html>"""
-                    final_bytes = html_content.encode('utf-8')
-                    ext, mime = "html", "text/html"
-                elif report_format == "📊 CSV 表格":
-                    # 转为CSV格式（提取关键数据）
-                    lines = report_bytes.decode('utf-8').split('\n')
-                    csv_lines = ["项目,内容"]
-                    for line in lines:
-                        if ':' in line and not line.startswith('='):
-                            parts = line.split(':', 1)
-                            csv_lines.append(f'"{parts[0].strip()}","{parts[1].strip()}"')
+                if report_format == "📊 CSV 数据表格":
+                    last_r = df.iloc[-1]
+                    prev_r = df.iloc[-2] if len(df) > 1 else last_r
+                    chg = (last_r['close'] - prev_r['close']) / prev_r['close'] * 100
+                    csv_lines = ["项目,数值"]
+                    csv_lines.append(f"标的,{selected}")
+                    csv_lines.append(f"最新价,{last_r['close']:.2f}")
+                    csv_lines.append(f"涨跌幅,{chg:+.2f}%")
+                    csv_lines.append(f"最高价,{last_r['high']:.2f}")
+                    csv_lines.append(f"最低价,{last_r['low']:.2f}")
+                    if patterns:
+                        for name, info in patterns.items():
+                            csv_lines.append(f"{name},{info.get('信号','')}")
                     final_bytes = '\n'.join(csv_lines).encode('utf-8-sig')
                     ext, mime = "csv", "text/csv"
                 else:
-                    # PDF格式
-                    try:
-                        from reportlab.pdfgen import canvas as pdf_canvas
-                        from reportlab.lib.pagesizes import letter
-                        import io as io_module2
-                        buf = io_module2.BytesIO()
-                        c = pdf_canvas.Canvas(buf, pagesize=letter)
-                        w, h = letter
-                        c.setFont("Helvetica-Bold", 18)
-                        c.drawString(50, h-50, "ZhiTu YiShi Pro - Analysis Report")
-                        c.setFont("Helvetica", 11)
-                        y = h - 90
-                        for line in report_bytes.decode("utf-8").split("\n")[:40]:
-                            if y < 60:
-                                c.showPage()
-                                y = h - 50
-                                c.setFont("Helvetica", 11)
-                            c.drawString(50, y, line[:90])
-                            y -= 16
-                        c.save()
-                        buf.seek(0)
-                        final_bytes = buf.getvalue()
-                    except Exception:
-                        final_bytes = report_bytes
-                    ext, mime = "pdf", "application/pdf"
+                    final_bytes = report_bytes
+                    ext, mime = "html", "text/html"
 
                 fname = f"智图忆市分析报告_{selected}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
                 st.session_state["report_bytes"] = final_bytes
