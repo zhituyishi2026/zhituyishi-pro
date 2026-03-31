@@ -787,15 +787,10 @@ def show_backtest_results(backtest_result):
     
     st.dataframe(trades_df, use_container_width=True, hide_index=True)
     
-    # 导出CSV
+    # 导出CSV按钮 - 使用session_state存储数据
     csv_data = trades_df.to_csv(index=False).encode("utf-8-sig")
-    st.download_button(
-        "📥 导出回测结果为CSV",
-        csv_data,
-        f"回测结果_{backtest_result['pattern_name']}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv",
-        "text/csv",
-        key="download-backtest-csv"
-    )
+    st.session_state["backtest_csv_bytes"] = csv_data
+    st.session_state["backtest_csv_name"] = f"回测结果_{backtest_result['pattern_name']}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
 
 # ===================== PDF报告生成 =====================
 def show_stats_panel(matches, window, extend_days):
@@ -826,8 +821,24 @@ def show_stats_panel(matches, window, extend_days):
         win_rate = up_count / len(returns_20d) * 100 if returns_20d else 0
         st.metric("上涨胜率", f"{win_rate:.0f}%", f"盈利 {up_count} 次 / {len(matches)} 次")
 
-def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma=True, show_vol=True, show_macd=True, title="K线图"):
-    """绘制K线图表"""
+def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma=True, show_vol=True, show_macd=True, title="K线图", dark_mode=False):
+    """绘制K线图表，支持深色模式"""
+    # 根据深色模式设置颜色
+    if dark_mode:
+        bg_color = "#1a1a2e"
+        grid_color = "#333355"
+        text_color = "#aaaacc"
+        up_color = "#26a69a"    # 上涨 - 青色
+        down_color = "#ef5350"   # 下跌 - 红色
+        ma_colors = ["#ff9800", "#2196f3", "#9c27b0"]  # MA5/10/20 深色配色
+    else:
+        bg_color = "#ffffff"
+        grid_color = "#E0E0E0"
+        text_color = "#333333"
+        up_color = "#26a69a"    # 上涨 - 绿色
+        down_color = "#ef5350"   # 下跌 - 红色
+        ma_colors = ["#ff9800", "#2196f3", "#9c27b0"]  # MA5/10/20
+    
     fig = make_subplots(
         rows=3, cols=1,
         shared_xaxes=True,
@@ -835,6 +846,14 @@ def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma
         row_heights=[0.6, 0.2, 0.2],
         specs=[[{"secondary_y": False}], [{"secondary_y": False}], [{"secondary_y": False}]]
     )
+    
+    # K线配色：根据涨跌设置颜色
+    colors = []
+    for i in range(len(df)):
+        if df["close"].iloc[i] >= df["open"].iloc[i]:
+            colors.append(up_color)
+        else:
+            colors.append(down_color)
     
     # K线
     fig.add_trace(
@@ -844,35 +863,98 @@ def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma
             high=df["high"],
             low=df["low"],
             close=df["close"],
-            name="K线"
+            name="K线",
+            increasing_line_color=up_color,
+            decreasing_line_color=down_color,
+            increasing_fillcolor=up_color,
+            decreasing_fillcolor=down_color,
         ),
         row=1, col=1
     )
     
     # 均线
     if show_ma:
-        for ma_col, ma_name in [("ma5", "MA5"), ("ma10", "MA10"), ("ma20", "MA20")]:
+        for idx, (ma_col, ma_name) in enumerate([("ma5", "MA5"), ("ma10", "MA10"), ("ma20", "MA20")]):
             if ma_col in df.columns:
                 fig.add_trace(
-                    go.Scatter(x=df["date"], y=df[ma_col], name=ma_name, mode="lines"),
+                    go.Scatter(
+                        x=df["date"], y=df[ma_col], name=ma_name, mode="lines",
+                        line=dict(color=ma_colors[idx], width=1.5)
+                    ),
                     row=1, col=1
                 )
     
     # 成交量
     if show_vol:
+        vol_colors = [up_color if df["close"].iloc[i] >= df["open"].iloc[i] else down_color
+                      for i in range(len(df))]
         fig.add_trace(
-            go.Bar(x=df["date"], y=df["volume"], name="成交量", marker_color="rgba(100,100,100,0.3)"),
+            go.Bar(x=df["date"], y=df["volume"], name="成交量", marker_color=vol_colors),
             row=2, col=1
         )
     
     # MACD
     if show_macd and "macd" in df.columns:
+        macd_vals = df["macd"].values
+        sig_vals = df["macd_signal"].values
+        macd_colors = [up_color if macd_vals[i] >= sig_vals[i] else down_color
+                       for i in range(len(macd_vals))]
         fig.add_trace(
-            go.Scatter(x=df["date"], y=df["macd"], name="MACD", mode="lines"),
+            go.Scatter(x=df["date"], y=df["macd"], name="MACD", mode="lines",
+                       line=dict(color="#2196f3", width=1.5)),
+            row=3, col=1
+        )
+        fig.add_trace(
+            go.Scatter(x=df["date"], y=df["macd_signal"], name="Signal", mode="lines",
+                       line=dict(color="#ff9800", width=1.5)),
+            row=3, col=1
+        )
+        # MACD 柱状图
+        macd_hist_colors = [up_color if v >= 0 else down_color for v in df["macd_hist"].values]
+        fig.add_trace(
+            go.Bar(x=df["date"], y=df["macd_hist"], name="MACD Hist",
+                   marker_color=macd_hist_colors, opacity=0.6),
             row=3, col=1
         )
     
-    fig.update_layout(height=500, title_text=title, hovermode="x unified")
+    # 深色模式下自定义 K线 颜色映射（覆盖 Candlestick 的全局配色）
+    fig.update_traces(
+        increasing_line_color=up_color,
+        decreasing_line_color=down_color,
+        increasing_fillcolor=up_color,
+        decreasing_fillcolor=down_color,
+        row=1, col=1
+    )
+    
+    fig.update_layout(
+        height=500,
+        title_text=title,
+        hovermode="x unified",
+        paper_bgcolor=bg_color,
+        plot_bgcolor=bg_color,
+        font=dict(color=text_color),
+        xaxis=dict(gridcolor=grid_color, color=text_color),
+        yaxis=dict(gridcolor=grid_color, color=text_color),
+        yaxis2=dict(gridcolor=grid_color, color=text_color),
+        yaxis3=dict(gridcolor=grid_color, color=text_color),
+        showlegend=True,
+        legend=dict(
+            orientation="h", yanchor="bottom", y=1.02,
+            xanchor="right", x=1,
+            bgcolor="rgba(0,0,0,0)" if dark_mode else "rgba(255,255,255,0)"
+        )
+    )
+    
+    # 深色模式下更新图例和背景
+    if dark_mode:
+        fig.update_layout(
+            paper_bgcolor="#1a1a2e",
+            plot_bgcolor="#1a1a2e",
+        )
+        for i in range(1, 4):
+            fig.update_xaxes(gridcolor="#333355", color="#aaaacc", row=i, col=1)
+            fig.update_yaxes(gridcolor="#333355", color="#aaaacc", row=i, col=1)
+    
     return fig
 
 def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matches=None):
@@ -943,10 +1025,103 @@ def main():
     with st.sidebar:
         st.header("⚙️ 分析设置")
         
+        # ===== P1: 深色模式开关 =====
+        st.subheader("🌙 界面主题")
+        dark_mode = st.toggle("🌙 深色模式", value=st.session_state.get("dark_mode", False))
+        st.session_state["dark_mode"] = dark_mode
+        
+        # 根据深色模式设置页面配色
+        if dark_mode:
+            st.markdown("""
+            <style>
+                /* 深色主题覆盖 */
+                .stApp { background-color: #1a1a2e !important; }
+                .stMainBlockContainer { background-color: #1a1a2e !important; }
+                body, .stApp, [data-testid="stMain"], [data-testid="stMainBlockContainer"] { color: #eee !important; }
+                /* 侧边栏深色 */
+                [data-testid="stSidebar"] { background-color: #16213e !important; }
+                /* 卡片/容器 */
+                .element-container { background-color: #1a1a2e !important; }
+                /* 指标卡片 */
+                .metric-card {background:#16213e !important; border-left:4px solid #4a90e2 !important; color:#eee !important;}
+                .match-card {background:#16213e !important; border-left:4px solid #ffa500 !important; color:#eee !important;}
+                /* K线图背景 */
+                .js-plotly-plot .plotly .mainplot { background: #1a1a2e !important; }
+                /* Markdown 文字 */
+                p, h1, h2, h3, h4, span, div { color: #eee !important; }
+                /* 链接 */
+                a { color: #6db3f2 !important; }
+                /* 警告/成功/信息框 */
+                .stAlert { background-color: #16213e !important; color: #eee !important; }
+                /* datafame 表格 */
+                .dataframe { background-color: #16213e !important; color: #eee !important; }
+                thead { background-color: #0f3460 !important; color: #eee !important; }
+                tbody tr { background-color: #16213e !important; color: #eee !important; }
+                /* 按钮 */
+                .stButton > button { background-color: #4a90e2 !important; color: #fff !important; border-color: #4a90e2 !important; }
+                /* toggle 开关 */
+                .stToggle > label { color: #eee !important; }
+                /* divider */
+                hr { border-color: #333 !important; }
+            </style>
+            """, unsafe_allow_html=True)
+        else:
+            st.markdown("""
+            <style>
+                /* 亮色主题覆盖（恢复默认） */
+                .stApp { background-color: #ffffff !important; }
+                body, .stApp, [data-testid="stMain"], [data-testid="stMainBlockContainer"] { color: inherit !important; }
+                [data-testid="stSidebar"] { background-color: #f0f2f6 !important; }
+                /* 移除深色样式 */
+                .metric-card {background:#f0f7ff !important; border-left:4px solid #1f77b4 !important; color:inherit !important;}
+                .match-card {background:#fffef0 !important; border-left:4px solid #ffa500 !important; color:inherit !important;}
+                p, h1, h2, h3, h4, span, div { color: inherit !important; }
+                /* 表格 */
+                .dataframe { background-color: white !important; color: inherit !important; }
+                thead { background-color: #f0f2f6 !important; color: inherit !important; }
+                tbody tr { background-color: white !important; color: inherit !important; }
+            </style>
+            """, unsafe_allow_html=True)
+        
         # 标的
         st.subheader("📊 选择标的")
-        selected = st.selectbox("股票/指数", list(STOCK_MAP.keys()), label_visibility="collapsed")
-        code = STOCK_MAP[selected]
+        
+        # ===== P0: 自定义股票代码输入 =====
+        custom_code_input = st.text_input(
+            "自定义股票代码",
+            value=st.session_state.get("custom_code_input", ""),
+            placeholder="输入股票代码，如 sh000001",
+            help="支持格式：sh + 6位数字（上证）或 sz + 6位数字（深证），如 sh000001、sz399006",
+            key="custom_code_input"
+        )
+        custom_error = st.session_state.get("custom_code_error", None)
+        
+        # 验证并处理自定义股票代码
+        process_custom = False
+        if custom_code_input:
+            custom_code_input_clean = custom_code_input.strip().lower()
+            import re
+            if re.match(r"^(sh|sz)\d{6}$", custom_code_input_clean):
+                st.session_state["custom_code_error"] = None
+                st.session_state["custom_code_input"] = custom_code_input_clean
+                process_custom = True
+            else:
+                st.session_state["custom_code_error"] = "⚠️ 股票代码格式错误，请输入 sh/sz + 6位数字，如 sh000001"
+        
+        # 显示自定义代码错误提示
+        if st.session_state.get("custom_code_error"):
+            st.error(st.session_state["custom_code_error"])
+        
+        # 优先使用自定义代码，否则使用下拉选择
+        if process_custom or st.session_state.get("use_custom_code", False):
+            selected = f"【自选】{custom_code_input_clean.upper()}"
+            code = custom_code_input_clean
+            st.session_state["use_custom_code"] = True
+            st.session_state["custom_selected"] = selected
+        else:
+            st.session_state["use_custom_code"] = False
+            selected = st.selectbox("股票/指数", list(STOCK_MAP.keys()), label_visibility="collapsed")
+            code = STOCK_MAP[selected]
         
         st.subheader("🔧 形态匹配设置")
         pattern_days = st.slider("模板窗口天数", 5, 60, 20, help="选取最近多少根K线作为匹配模板")
@@ -1205,37 +1380,51 @@ def main():
             backtest_holding_select = st.slider("持有天数", 5, 60, 20, key="backtest_holding_main")
         
         with col_backtest3:
-            backtest_run = st.button("🚀 开始回测", key="backtest_run_main", use_container_width=True)
+            backtest_run = st.button("🚀 开始回测", key="backtest_run_main", width='stretch')
         
         if backtest_run:
             with st.spinner(f"正在回测 {backtest_pattern_select} 策略..."):
                 backtest_result = backtest_pattern_strategy(df, backtest_pattern_select, backtest_holding_select)
-            
+
             if backtest_result:
                 show_backtest_results(backtest_result)
                 st.session_state["last_backtest"] = backtest_result
             else:
                 st.warning("该形态历史数据不足，无法回测")
+
+        # 每次render都检查，存在就显示CSV下载按钮
+        if st.session_state.get("backtest_csv_bytes"):
+            st.download_button(
+                "📥 导出回测结果为CSV",
+                st.session_state["backtest_csv_bytes"],
+                st.session_state.get("backtest_csv_name", "回测结果.csv"),
+                "text/csv",
+                key="download-backtest-csv"
+            )
         
         # ===== 第五部分：PDF报告生成 =====
         st.markdown("---")
         st.subheader("📄 生成分析报告")
-        
-        if st.button("📄 生成分析报告", width='stretch'):
+
+        if st.button("📄 生成分析报告", key="generate_report_btn", width='stretch'):
             backtest_for_report = st.session_state.get("last_backtest", None)
             report_bytes = generate_pdf_report(df, selected, patterns, backtest_for_report, matches)
-            
-            if report_bytes and len(report_bytes) > 0:
-                st.download_button(
-                    "📥 下载分析报告",
-                    report_bytes,
-                    f"智图忆市分析报告_{selected}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt",
-                    "text/plain",
-                    key="download-report"
-                )
+            if report_bytes:
+                st.session_state["report_bytes"] = report_bytes
+                st.session_state["report_name"] = f"智图忆市分析报告_{selected}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.txt"
                 st.success("✅ 报告生成成功！")
             else:
                 st.error("❌ 报告生成失败")
+
+        # 每次render都检查，存在就显示下载按钮
+        if st.session_state.get("report_bytes"):
+            st.download_button(
+                "📥 下载分析报告",
+                st.session_state["report_bytes"],
+                st.session_state.get("report_name", "报告.txt"),
+                "text/plain",
+                key="download-report"
+            )
     
     else:
         # 初始界面
