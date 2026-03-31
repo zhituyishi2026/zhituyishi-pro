@@ -1046,7 +1046,7 @@ def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma
 def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matches=None):
     """
     生成分析报告（HTML格式，含交互图表）
-    返回 (bytes, ext, mime) 元组
+    返回 bytes 对象
     """
     try:
         last = df.iloc[-1]
@@ -1065,6 +1065,7 @@ def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matc
 
         # ===== 生成权益曲线HTML =====
         equity_html = ""
+        backtest_stats_html = ""
         if backtest_result and backtest_result.get("equity_curve"):
             import plotly.graph_objects as go_eq
             eq = backtest_result["equity_curve"]
@@ -1082,6 +1083,17 @@ def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matc
                 height=300
             )
             equity_html = fig_eq.to_html(full_html=False, include_plotlyjs=False)
+            
+            # 回测统计卡片
+            bt = backtest_result
+            backtest_stats_html = f"""
+            <div class="stats-grid">
+                <div class="stat-card"><div class="stat-val">{bt.get('total_trades', 0)}</div><div class="stat-label">交易次数</div></div>
+                <div class="stat-card"><div class="stat-val" style="color:#3fb950">{bt.get('win_rate', 0):.1f}%</div><div class="stat-label">胜率</div></div>
+                <div class="stat-card"><div class="stat-val">{bt.get('avg_profit', 0):+.2f}%</div><div class="stat-label">平均收益</div></div>
+                <div class="stat-card"><div class="stat-val">{bt.get('sharpe_ratio', 0):.2f}</div><div class="stat-label">夏普比率</div></div>
+            </div>
+            """
 
         # ===== 形态检测表格 =====
         pattern_rows = ""
@@ -1097,19 +1109,14 @@ def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matc
                     <td style="color:#8b949e;font-size:0.85em">{info.get('描述', '')}</td>
                 </tr>"""
 
-        # ===== 回测统计 =====
+        # ===== 回测结果部分 =====
         backtest_section = ""
         if backtest_result:
             bt = backtest_result
             backtest_section = f"""
             <div class="section">
-                <h2>📈 策略回测结果</h2>
-                <div class="stats-grid">
-                    <div class="stat-card"><div class="stat-val">{bt.get('total_trades', 0)}</div><div class="stat-label">交易次数</div></div>
-                    <div class="stat-card"><div class="stat-val" style="color:#3fb950">{bt.get('win_rate', 0)*100:.1f}%</div><div class="stat-label">胜率</div></div>
-                    <div class="stat-card"><div class="stat-val">{bt.get('avg_profit', 0)*100:+.2f}%</div><div class="stat-label">平均收益</div></div>
-                    <div class="stat-card"><div class="stat-val">{bt.get('sharpe_ratio', 0):.2f}</div><div class="stat-label">夏普比率</div></div>
-                </div>
+                <h2>📈 策略回测结果 - {bt.get('pattern_name', '未知形态')}</h2>
+                {backtest_stats_html}
                 {equity_html}
             </div>"""
 
@@ -1482,6 +1489,52 @@ def main():
                         """, unsafe_allow_html=True)
             else:
                 st.info("未检测到明确形态")
+            
+            # ===== 形态胜率对比 =====
+            if patterns:
+                st.markdown("#### 📊 形态胜率对比")
+                selected_patterns = st.multiselect(
+                    "选择形态进行对比",
+                    list(patterns.keys()),
+                    default=list(patterns.keys())[:3] if len(patterns) >= 3 else list(patterns.keys()),
+                    key="pattern_compare_select"
+                )
+                if st.button("📊 对比选中形态", key="pattern_compare_btn"):
+                    if selected_patterns:
+                        with st.spinner("正在对比..."):
+                            compare_results = []
+                            for pname in selected_patterns:
+                                result = backtest_pattern_strategy(df, pname, holding_days=20)
+                                if result:
+                                    compare_results.append({
+                                        "形态": pname,
+                                        "交易次数": result["total_trades"],
+                                        "胜率": f"{result['win_rate']:.1f}%",
+                                        "平均收益": f"{result['avg_profit']:+.2f}%",
+                                        "夏普比率": f"{result['sharpe_ratio']:.2f}"
+                                    })
+                        if compare_results:
+                            st.session_state["pattern_compare_results"] = compare_results
+                
+                if st.session_state.get("pattern_compare_results"):
+                    compare_df = pd.DataFrame(st.session_state["pattern_compare_results"])
+                    st.dataframe(compare_df, use_container_width=True, hide_index=True)
+                    
+                    # 胜率柱状图
+                    win_rates = [float(r["胜率"].replace("%","")) for r in st.session_state["pattern_compare_results"]]
+                    names = [r["形态"] for r in st.session_state["pattern_compare_results"]]
+                    colors = ["#3fb950" if w >= 50 else "#f85149" for w in win_rates]
+                    fig_cmp = go.Figure(go.Bar(x=names, y=win_rates, marker_color=colors))
+                    fig_cmp.update_layout(
+                        title="形态胜率对比",
+                        paper_bgcolor="#0e1117",
+                        plot_bgcolor="#0e1117",
+                        font=dict(color="#c9d1d9"),
+                        xaxis=dict(gridcolor="#30363d"),
+                        yaxis=dict(gridcolor="#30363d", title="胜率(%)"),
+                        height=350
+                    )
+                    st.plotly_chart(fig_cmp, use_container_width=True)
         
         # ===== 第三部分：形态匹配 =====
         st.markdown("---")
@@ -1562,58 +1615,22 @@ def main():
                 st.session_state["last_backtest"] = backtest_result
             else:
                 st.warning("该形态历史数据不足，无法回测")
-
-        # 每次render都检查，存在就显示回测导出按钮
-        if st.session_state.get("backtest_csv_bytes"):
-            col_bt_fmt, col_bt_dl = st.columns([2, 1])
-            with col_bt_fmt:
-                bt_export_fmt = st.selectbox(
-                    "回测导出格式",
-                    ["📊 CSV 表格", "📄 HTML 图表报告"],
-                    label_visibility="collapsed",
-                    key="bt_export_fmt"
-                )
-            with col_bt_dl:
-                if bt_export_fmt == "📄 HTML 图表报告":
-                    if st.session_state.get("backtest_html_bytes"):
-                        st.download_button(
-                            "📥 下载回测报告",
-                            st.session_state["backtest_html_bytes"],
-                            st.session_state.get("backtest_html_name", "回测报告.html"),
-                            "text/html",
-                            key="download-backtest-html"
-                        )
-                    else:
-                        st.warning("请先运行回测")
-                else:
-                    st.download_button(
-                        "📥 下载CSV",
-                        st.session_state["backtest_csv_bytes"],
-                        st.session_state.get("backtest_csv_name", "回测结果.csv"),
-                        "text/csv",
-                        key="download-backtest-csv"
-                    )
         
-        # ===== 第五部分：报告生成 =====
+        # ===== 第五部分：生成完整报告 =====
         st.markdown("---")
-        st.subheader("📄 生成分析报告")
-
-        col_fmt, col_btn = st.columns([2, 1])
-        with col_fmt:
-            report_format = st.selectbox(
-                "报告格式",
-                ["🌐 HTML 图表报告", "📊 CSV 数据表格"],
-                label_visibility="collapsed"
-            )
-        with col_btn:
-            gen_btn = st.button("📄 生成报告", key="generate_report_btn", width='stretch')
-
-        if gen_btn:
-            backtest_for_report = st.session_state.get("last_backtest", None)
+        st.subheader("📄 生成完整报告")
+        
+        col_rpt1, col_rpt2 = st.columns([2, 1])
+        with col_rpt1:
+            rpt_fmt = st.selectbox("报告格式", ["🌐 HTML 完整报告", "📊 CSV 数据"], label_visibility="collapsed")
+        with col_rpt2:
+            rpt_btn = st.button("📄 生成报告", key="gen_full_report", width='stretch')
+        
+        if rpt_btn:
             with st.spinner("正在生成报告..."):
-                report_bytes = generate_pdf_report(df, selected, patterns, backtest_for_report, matches)
-            if report_bytes:
-                if report_format == "📊 CSV 数据表格":
+                backtest_for_report = st.session_state.get("last_backtest", None)
+                if rpt_fmt == "📊 CSV 数据":
+                    # CSV：当前行情+形态检测结果
                     last_r = df.iloc[-1]
                     prev_r = df.iloc[-2] if len(df) > 1 else last_r
                     chg = (last_r['close'] - prev_r['close']) / prev_r['close'] * 100
@@ -1626,29 +1643,21 @@ def main():
                     if patterns:
                         for name, info in patterns.items():
                             csv_lines.append(f"{name},{info.get('信号','')}")
-                    final_bytes = '\n'.join(csv_lines).encode('utf-8-sig')
-                    ext, mime = "csv", "text/csv"
+                    report_bytes = '\n'.join(csv_lines).encode('utf-8-sig')
                 else:
-                    final_bytes = report_bytes
-                    ext, mime = "html", "text/html"
-
-                fname = f"智图忆市分析报告_{selected}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
-                st.session_state["report_bytes"] = final_bytes
-                st.session_state["report_name"] = fname
-                st.session_state["report_mime"] = mime
-                st.success("✅ 报告生成成功！")
-            else:
-                st.error("❌ 报告生成失败")
-
-        # 每次render都检查，存在就显示下载按钮
-        if st.session_state.get("report_bytes"):
-            st.download_button(
-                "📥 下载报告",
-                st.session_state["report_bytes"],
-                st.session_state.get("report_name", "报告.txt"),
-                st.session_state.get("report_mime", "text/plain"),
-                key="download-report"
-            )
+                    # HTML：调用 generate_pdf_report 生成完整HTML
+                    report_bytes = generate_pdf_report(df, selected, patterns, backtest_for_report, matches)
+                
+                if report_bytes:
+                    st.session_state["full_report_bytes"] = report_bytes
+                    st.session_state["full_report_name"] = f"智图忆市完整报告_{selected}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{'html' if rpt_fmt == '🌐 HTML 完整报告' else 'csv'}"
+                    st.success("✅ 报告生成成功！")
+        
+        if st.session_state.get("full_report_bytes"):
+            st.download_button("📥 下载完整报告", st.session_state["full_report_bytes"],
+                st.session_state.get("full_report_name","报告.html"), 
+                "text/html" if "html" in st.session_state.get("full_report_name","") else "text/csv", 
+                key="dl-full-report")
     
     else:
         # 初始界面
