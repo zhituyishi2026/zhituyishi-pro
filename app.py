@@ -60,6 +60,31 @@ STOCK_MAP = {
     "中证1000": "sh000852",
 }
 
+# 股票名称首字母映射（方便用户输入）
+STOCK_NAME_MAP = {
+    "sh000001": "上证指数",
+    "sz399001": "深证成指",
+    "sz399006": "创业板指",
+    "hk.HSI": "恒生指数",
+    "gb_$IXIC": "纳斯达克",
+    "gb_$INX": "标普500",
+    "sh600519": "贵州茅台",
+    "sz000858": "五粮液",
+    "sz002594": "比亚迪",
+    "sh601318": "中国平安",
+    "sh600036": "招商银行",
+    "sz300750": "宁德时代",
+    "sz300059": "东方财富",
+    "sh688981": "中芯国际",
+    "sz002415": "海康威视",
+    "sh600570": "恒生电子",
+    "sh601857": "中国石油",
+    "sh600028": "中国石化",
+    "sz000333": "美的集团",
+    "sh601398": "工商银行",
+    "sh601288": "农业银行",
+}
+
 # ===================== 数据源 =====================
 @st.cache_data(ttl=3600)
 def get_sina_data(code, datalen=800):
@@ -1342,22 +1367,42 @@ def main():
         import re
         if input_mode == "✏️ 自定义代码":
             custom_code_input = st.text_input(
-                "股票代码",
-                placeholder="如 sh000001 或 sz399006",
-                help="sh=上证，sz=深证，后接6位数字",
+                "股票代码或名称",
+                placeholder="输入代码或名称，如 600519、茅台、hjhs",
+                help="支持：sh/sz+6位代码，或名称首字母，如 hjhs",
                 key="custom_code_input"
             )
             if custom_code_input:
                 clean = custom_code_input.strip().lower()
+
+                # 1. 先尝试直接匹配（sh/sz格式）
                 if re.match(r"^(sh|sz)\d{6}$", clean):
                     selected = f"自选 {clean.upper()}"
                     code = clean
+                # 2. 尝试纯数字6位代码
+                elif re.match(r"^\d{6}$", clean):
+                    # 自动判断是上证还是深证
+                    if clean.startswith(("0", "1", "2", "3")):
+                        code = f"sz{clean}"
+                    else:
+                        code = f"sh{clean}"
+                    selected = f"自选 {code}"
+                # 3. 尝试名称首字母匹配
                 else:
-                    st.error("⚠️ 格式错误，请输入如 sh000001 或 sz399006")
-                    selected = list(STOCK_MAP.keys())[0]
-                    code = list(STOCK_MAP.values())[0]
+                    matched = False
+                    for c, name in STOCK_NAME_MAP.items():
+                        name_lower = name.lower()
+                        # 首字母匹配（如"hjhs"匹配"黄金期货"）
+                        if all(c2 in name_lower for c2 in clean):
+                            code = c
+                            selected = f"{name} ({code})"
+                            matched = True
+                            break
+                    if not matched:
+                        st.error(f"未找到匹配的股票: {custom_code_input}，请尝试输入代码如 sh000001")
+                        selected = list(STOCK_MAP.keys())[0]
+                        code = list(STOCK_MAP.values())[0]
             else:
-                st.caption("请输入股票代码后点击开始分析")
                 selected = list(STOCK_MAP.keys())[0]
                 code = list(STOCK_MAP.values())[0]
         else:
