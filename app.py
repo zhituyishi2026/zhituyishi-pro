@@ -812,23 +812,15 @@ def show_stats_panel(matches, window, extend_days):
         win_rate = up_count / len(returns_20d) * 100 if returns_20d else 0
         st.metric("上涨胜率", f"{win_rate:.0f}%", f"盈利 {up_count} 次 / {len(matches)} 次")
 
-def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma=True, show_vol=True, show_macd=True, title="K线图", dark_mode=False):
-    """绘制K线图表，支持深色模式"""
-    # 根据深色模式设置颜色
-    if dark_mode:
-        bg_color = "#1a1a2e"
-        grid_color = "#333355"
-        text_color = "#aaaacc"
-        up_color = "#26a69a"    # 上涨 - 青色
-        down_color = "#ef5350"   # 下跌 - 红色
-        ma_colors = ["#ff9800", "#2196f3", "#9c27b0"]  # MA5/10/20 深色配色
-    else:
-        bg_color = "#ffffff"
-        grid_color = "#E0E0E0"
-        text_color = "#333333"
-        up_color = "#26a69a"    # 上涨 - 绿色
-        down_color = "#ef5350"   # 下跌 - 红色
-        ma_colors = ["#ff9800", "#2196f3", "#9c27b0"]  # MA5/10/20
+def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma=True, show_vol=True, show_macd=True, title="K线图", dark_mode=True):
+    """绘制K线图表，默认深色模式"""
+    # 固定深色配色，与页面背景统一
+    bg_color = "#0e1117"
+    grid_color = "#30363d"
+    text_color = "#c9d1d9"
+    up_color = "#3fb950"      # 上涨 - 绿色
+    down_color = "#f85149"    # 下跌 - 红色
+    ma_colors = ["#ff9800", "#58a6ff", "#bc8cff"]  # MA5/10/20
     
     fig = make_subplots(
         rows=3, cols=1,
@@ -932,19 +924,12 @@ def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma
         legend=dict(
             orientation="h", yanchor="bottom", y=1.02,
             xanchor="right", x=1,
-            bgcolor="rgba(0,0,0,0)" if dark_mode else "rgba(255,255,255,0)"
+            bgcolor="rgba(0,0,0,0)"
         )
     )
-    
-    # 深色模式下更新图例和背景
-    if dark_mode:
-        fig.update_layout(
-            paper_bgcolor="#1a1a2e",
-            plot_bgcolor="#1a1a2e",
-        )
-        for i in range(1, 4):
-            fig.update_xaxes(gridcolor="#333355", color="#aaaacc", row=i, col=1)
-            fig.update_yaxes(gridcolor="#333355", color="#aaaacc", row=i, col=1)
+    for i in range(1, 4):
+        fig.update_xaxes(gridcolor=grid_color, color=text_color, row=i, col=1)
+        fig.update_yaxes(gridcolor=grid_color, color=text_color, row=i, col=1)
     
     return fig
 
@@ -1016,64 +1001,21 @@ def main():
     with st.sidebar:
         st.header("⚙️ 分析设置")
         
-        # ===== P1: 深色模式开关 =====
-        st.subheader("🌙 界面主题")
-        dark_mode = st.toggle("🌙 深色模式", value=st.session_state.get("dark_mode", False))
-        st.session_state["dark_mode"] = dark_mode
-        
-        # 根据深色模式设置页面配色
-        if dark_mode:
-            st.markdown("""
-            <style>
-                /* 深色主题覆盖 */
-                .stApp { background-color: #1a1a2e !important; }
-                .stMainBlockContainer { background-color: #1a1a2e !important; }
-                body, .stApp, [data-testid="stMain"], [data-testid="stMainBlockContainer"] { color: #eee !important; }
-                /* 侧边栏深色 */
-                [data-testid="stSidebar"] { background-color: #16213e !important; }
-                /* 卡片/容器 */
-                .element-container { background-color: #1a1a2e !important; }
-                /* 指标卡片 */
-                .metric-card {background:#16213e !important; border-left:4px solid #4a90e2 !important; color:#eee !important;}
-                .match-card {background:#16213e !important; border-left:4px solid #ffa500 !important; color:#eee !important;}
-                /* K线图背景 */
-                .js-plotly-plot .plotly .mainplot { background: #1a1a2e !important; }
-                /* Markdown 文字 */
-                p, h1, h2, h3, h4, span, div { color: #eee !important; }
-                /* 链接 */
-                a { color: #6db3f2 !important; }
-                /* 警告/成功/信息框 */
-                .stAlert { background-color: #16213e !important; color: #eee !important; }
-                /* datafame 表格 */
-                .dataframe { background-color: #16213e !important; color: #eee !important; }
-                thead { background-color: #0f3460 !important; color: #eee !important; }
-                tbody tr { background-color: #16213e !important; color: #eee !important; }
-                /* 按钮 */
-                .stButton > button { background-color: #4a90e2 !important; color: #fff !important; border-color: #4a90e2 !important; }
-                /* toggle 开关 */
-                .stToggle > label { color: #eee !important; }
-                /* divider */
-                hr { border-color: #333 !important; }
-            </style>
-            """, unsafe_allow_html=True)
-        else:
-            st.markdown("""
-            <style>
-                /* 亮色主题覆盖（恢复默认） */
-                .stApp { background-color: #ffffff !important; }
-                body, .stApp, [data-testid="stMain"], [data-testid="stMainBlockContainer"] { color: inherit !important; }
-                [data-testid="stSidebar"] { background-color: #f0f2f6 !important; }
-                /* 移除深色样式 */
-                .metric-card {background:#f0f7ff !important; border-left:4px solid #1f77b4 !important; color:inherit !important;}
-                .match-card {background:#fffef0 !important; border-left:4px solid #ffa500 !important; color:inherit !important;}
-                p, h1, h2, h3, h4, span, div { color: inherit !important; }
-                /* 表格 */
-                .dataframe { background-color: white !important; color: inherit !important; }
-                thead { background-color: #f0f2f6 !important; color: inherit !important; }
-                tbody tr { background-color: white !important; color: inherit !important; }
-            </style>
-            """, unsafe_allow_html=True)
-        
+        # 强制深色模式（固定，不提供切换）
+        dark_mode = True
+        st.markdown("""
+        <style>
+            .stApp { background-color: #0e1117 !important; }
+            .stMainBlockContainer { background-color: #0e1117 !important; }
+            [data-testid="stSidebar"] { background-color: #161b22 !important; }
+            .metric-card {background:#161b22 !important; border-left:4px solid #4a90e2 !important; color:#eee !important;}
+            .match-card {background:#161b22 !important; border-left:4px solid #ffa500 !important; color:#eee !important;}
+            .stButton > button { background-color: #238636 !important; color: #fff !important; border: none !important; }
+            .stButton > button:hover { background-color: #2ea043 !important; }
+            hr { border-color: #30363d !important; }
+        </style>
+        """, unsafe_allow_html=True)
+
         # 标的
         st.subheader("📊 选择标的")
         
