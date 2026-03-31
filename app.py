@@ -1222,21 +1222,20 @@ def main():
                 for i, (name, info) in enumerate(patterns.items()):
                     with cols[i % 4]:
                         # 获取颜色配置，默认灰色
-                        color = PATTERN_COLORS.get(name, {"bg": "#f8f8f8", "border": "#888", "icon": "⚪"})
-                        signal_text_color = "#e24a4a" if "看涨" in info["信号"] else "#2e7d32" if "看跌" in info["信号"] else "#888"
+                        color = PATTERN_COLORS.get(name, {"bg": "transparent", "border": "#888", "icon": "⚪"})
+                        signal_text_color = "#3fb950" if "看涨" in info["信号"] else "#f85149" if "看跌" in info["信号"] else "#8b949e"
                         st.markdown(f"""
-                        <div style="background:{color['bg']}; padding:12px; border-radius:10px;
-                                    border-left:5px solid {color['border']}; margin:6px 0;">
-                            <h4 style="margin:0 0 6px 0;">{color['icon']} {name}</h4>
-                            <p style="margin:2px 0; color:{signal_text_color}; font-weight:bold;">
+                        <div style="background:transparent; padding:10px; border-radius:8px;
+                                    border-left:4px solid {color['border']}; margin:4px 0;">
+                            <div style="font-size:1rem; font-weight:bold; color:#c9d1d9; margin-bottom:4px;">
+                                {color['icon']} {name}
+                            </div>
+                            <div style="color:{signal_text_color}; font-weight:bold; font-size:0.9rem;">
                                 {info['信号']}
-                            </p>
-                            <p style="margin:2px 0; color:#555;">
-                                置信度: {info['置信度']:.0%}
-                            </p>
-                            <p style="margin:2px 0; font-size:0.82rem; color:#666;">
-                                {info['描述']}
-                            </p>
+                            </div>
+                            <div style="color:#8b949e; font-size:0.82rem;">
+                                置信度: {info['置信度']:.0%} &nbsp;|&nbsp; {info['描述']}
+                            </div>
                         </div>
                         """, unsafe_allow_html=True)
             else:
@@ -1322,15 +1321,63 @@ def main():
             else:
                 st.warning("该形态历史数据不足，无法回测")
 
-        # 每次render都检查，存在就显示CSV下载按钮
+        # 每次render都检查，存在就显示回测导出按钮
         if st.session_state.get("backtest_csv_bytes"):
-            st.download_button(
-                "📥 导出回测结果为CSV",
-                st.session_state["backtest_csv_bytes"],
-                st.session_state.get("backtest_csv_name", "回测结果.csv"),
-                "text/csv",
-                key="download-backtest-csv"
-            )
+            col_bt_fmt, col_bt_dl = st.columns([2, 1])
+            with col_bt_fmt:
+                bt_export_fmt = st.selectbox(
+                    "回测导出格式",
+                    ["📊 CSV 表格", "📄 PDF 报告"],
+                    label_visibility="collapsed",
+                    key="bt_export_fmt"
+                )
+            with col_bt_dl:
+                if bt_export_fmt == "📄 PDF 报告":
+                    # 用reportlab生成简单PDF
+                    try:
+                        from reportlab.pdfgen import canvas as pdf_canvas
+                        from reportlab.lib.pagesizes import letter
+                        import io as io_module2
+                        buf = io_module2.BytesIO()
+                        c = pdf_canvas.Canvas(buf, pagesize=letter)
+                        w, h = letter
+                        c.setFont("Helvetica-Bold", 16)
+                        c.drawString(50, h-50, "Backtest Report - ZhiTu YiShi Pro")
+                        c.setFont("Helvetica", 11)
+                        y = h - 90
+                        bt = st.session_state.get("last_backtest", {})
+                        lines = [
+                            f"Pattern: {bt.get('pattern_name','')}",
+                            f"Holding Days: {bt.get('holding_days','')}",
+                            f"Total Trades: {bt.get('total_trades','')}",
+                            f"Win Rate: {bt.get('win_rate',0)*100:.1f}%",
+                            f"Avg Return: {bt.get('avg_return',0)*100:.2f}%",
+                            f"Max Return: {bt.get('max_return',0)*100:.2f}%",
+                            f"Sharpe Ratio: {bt.get('sharpe_ratio',0):.2f}",
+                        ]
+                        for line in lines:
+                            c.drawString(50, y, line)
+                            y -= 20
+                        c.save()
+                        buf.seek(0)
+                        pdf_data = buf.getvalue()
+                        st.download_button(
+                            "📥 下载PDF",
+                            pdf_data,
+                            st.session_state.get("backtest_csv_name","回测结果").replace(".csv",".pdf"),
+                            "application/pdf",
+                            key="download-backtest-pdf"
+                        )
+                    except Exception as e:
+                        st.error(f"PDF生成失败: {e}")
+                else:
+                    st.download_button(
+                        "📥 下载CSV",
+                        st.session_state["backtest_csv_bytes"],
+                        st.session_state.get("backtest_csv_name", "回测结果.csv"),
+                        "text/csv",
+                        key="download-backtest-csv"
+                    )
         
         # ===== 第五部分：报告生成 =====
         st.markdown("---")
@@ -1340,7 +1387,7 @@ def main():
         with col_fmt:
             report_format = st.selectbox(
                 "报告格式",
-                ["📄 TXT 文本", "📊 CSV 表格", "🌐 HTML 网页"],
+                ["📄 PDF 报告", "📊 CSV 表格", "🌐 HTML 网页"],
                 label_visibility="collapsed"
             )
         with col_btn:
@@ -1375,8 +1422,31 @@ h1{{color:#1f77b4;}} pre{{background:#fff;padding:20px;border-radius:8px;border:
                     final_bytes = '\n'.join(csv_lines).encode('utf-8-sig')
                     ext, mime = "csv", "text/csv"
                 else:
-                    final_bytes = report_bytes
-                    ext, mime = "txt", "text/plain"
+                    # PDF格式
+                    try:
+                        from reportlab.pdfgen import canvas as pdf_canvas
+                        from reportlab.lib.pagesizes import letter
+                        import io as io_module2
+                        buf = io_module2.BytesIO()
+                        c = pdf_canvas.Canvas(buf, pagesize=letter)
+                        w, h = letter
+                        c.setFont("Helvetica-Bold", 18)
+                        c.drawString(50, h-50, "ZhiTu YiShi Pro - Analysis Report")
+                        c.setFont("Helvetica", 11)
+                        y = h - 90
+                        for line in report_bytes.decode("utf-8").split("\n")[:40]:
+                            if y < 60:
+                                c.showPage()
+                                y = h - 50
+                                c.setFont("Helvetica", 11)
+                            c.drawString(50, y, line[:90])
+                            y -= 16
+                        c.save()
+                        buf.seek(0)
+                        final_bytes = buf.getvalue()
+                    except Exception:
+                        final_bytes = report_bytes
+                    ext, mime = "pdf", "application/pdf"
 
                 fname = f"智图忆市分析报告_{selected}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{ext}"
                 st.session_state["report_bytes"] = final_bytes
