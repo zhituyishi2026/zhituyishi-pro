@@ -809,6 +809,90 @@ def show_backtest_results(backtest_result):
     st.session_state["backtest_csv_bytes"] = csv_data
     st.session_state["backtest_csv_name"] = f"回测结果_{backtest_result['pattern_name']}_{datetime.now().strftime('%Y%m%d_%H%M')}.csv"
 
+    # 同时生成HTML报告存入session_state
+    try:
+        import plotly.graph_objects as go_bt2
+        eq = backtest_result.get("equity_curve", [100])
+        profits_list = [t["profit_pct"] for t in backtest_result["trades"]]
+
+        fig_eq2 = go_bt2.Figure()
+        fig_eq2.add_trace(go_bt2.Scatter(
+            y=eq, mode="lines", name="权益曲线",
+            line=dict(color="#3fb950", width=2),
+            fill="tozeroy", fillcolor="rgba(63,185,80,0.1)"
+        ))
+        fig_eq2.update_layout(
+            title="策略权益曲线", paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
+            font=dict(color="#c9d1d9"),
+            xaxis=dict(gridcolor="#30363d", title="交易次数"),
+            yaxis=dict(gridcolor="#30363d", title="资金（初始=100）"), height=350
+        )
+
+        fig_dist2 = go_bt2.Figure()
+        fig_dist2.add_trace(go_bt2.Histogram(
+            x=profits_list, nbinsx=20, marker_color="#58a6ff", opacity=0.8
+        ))
+        fig_dist2.update_layout(
+            title="收益分布", paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
+            font=dict(color="#c9d1d9"),
+            xaxis=dict(gridcolor="#30363d", title="收益率(%)"),
+            yaxis=dict(gridcolor="#30363d", title="次数"), height=300
+        )
+
+        eq_html2 = fig_eq2.to_html(full_html=False, include_plotlyjs=False)
+        dist_html2 = fig_dist2.to_html(full_html=False, include_plotlyjs=False)
+
+        trade_rows2 = ""
+        for i, t in enumerate(backtest_result["trades"][:50]):
+            color = "#3fb950" if t["is_profitable"] else "#f85149"
+            bd = t['buy_date'].strftime('%Y-%m-%d') if hasattr(t['buy_date'], 'strftime') else str(t['buy_date'])
+            sd = t['sell_date'].strftime('%Y-%m-%d') if hasattr(t['sell_date'], 'strftime') else str(t['sell_date'])
+            trade_rows2 += f"<tr><td>{i+1}</td><td>{bd}</td><td>{t['buy_price']:.2f}</td><td>{sd}</td><td>{t['sell_price']:.2f}</td><td style='color:{color};font-weight:bold'>{t['profit_pct']:+.2f}%</td></tr>"
+
+        bt = backtest_result
+        html_report = f"""<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>回测报告 - {bt['pattern_name']}</title>
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<style>
+*{{box-sizing:border-box;margin:0;padding:0;}}
+body{{background:#0e1117;color:#c9d1d9;font-family:-apple-system,sans-serif;padding:24px;}}
+h1{{color:#58a6ff;font-size:1.6rem;margin-bottom:8px;}}
+.meta{{color:#8b949e;font-size:0.9rem;margin-bottom:24px;}}
+.section{{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:20px;margin-bottom:20px;}}
+.section h2{{color:#e6edf3;font-size:1rem;margin-bottom:16px;}}
+.stats{{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}}
+.stat{{background:#0e1117;border:1px solid #30363d;border-radius:8px;padding:12px;text-align:center;}}
+.stat .val{{font-size:1.4rem;font-weight:bold;color:#e6edf3;}}
+.stat .lbl{{font-size:0.8rem;color:#8b949e;margin-top:4px;}}
+.green{{color:#3fb950!important;}}.red{{color:#f85149!important;}}
+table{{width:100%;border-collapse:collapse;font-size:0.85rem;}}
+th{{background:#0e1117;color:#8b949e;padding:8px 10px;text-align:left;border-bottom:1px solid #30363d;}}
+td{{padding:7px 10px;border-bottom:1px solid #21262d;}}
+.disclaimer{{color:#8b949e;font-size:0.8rem;border-top:1px solid #30363d;padding-top:12px;margin-top:20px;}}
+</style></head><body>
+<h1>📈 智图忆市 Pro · 回测报告</h1>
+<div class="meta">策略：{bt['pattern_name']} &nbsp;|&nbsp; 持有天数：{bt['holding_days']} &nbsp;|&nbsp; 生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}</div>
+<div class="section"><h2>📊 回测统计</h2>
+<div class="stats">
+<div class="stat"><div class="val">{bt['total_trades']}</div><div class="lbl">交易次数</div></div>
+<div class="stat"><div class="val {'green' if bt['win_rate']>=50 else 'red'}">{bt['win_rate']:.1f}%</div><div class="lbl">胜率</div></div>
+<div class="stat"><div class="val {'green' if bt['avg_profit']>=0 else 'red'}">{bt['avg_profit']:+.2f}%</div><div class="lbl">平均收益</div></div>
+<div class="stat"><div class="val">{bt['sharpe_ratio']:.2f}</div><div class="lbl">夏普比率</div></div>
+</div></div>
+<div class="section"><h2>📈 权益曲线</h2>{eq_html2}</div>
+<div class="section"><h2>📊 收益分布</h2>{dist_html2}</div>
+<div class="section"><h2>📋 交易明细（前50笔）</h2>
+<table><thead><tr><th>#</th><th>买入日期</th><th>买入价</th><th>卖出日期</th><th>卖出价</th><th>收益</th></tr></thead>
+<tbody>{trade_rows2}</tbody></table></div>
+<div class="disclaimer">⚠️ 本报告仅供学习复盘研究，不构成任何投资建议。股市有风险，投资需谨慎。</div>
+</body></html>"""
+
+        st.session_state["backtest_html_bytes"] = html_report.encode('utf-8')
+        st.session_state["backtest_html_name"] = f"回测报告_{bt['pattern_name']}_{datetime.now().strftime('%Y%m%d_%H%M')}.html"
+    except Exception as e:
+        print(f"回测HTML生成失败: {e}")
+
 # ===================== PDF报告生成 =====================
 def show_stats_panel(matches, window, extend_days):
     """显示统计面板"""
@@ -1485,122 +1569,22 @@ def main():
             with col_bt_fmt:
                 bt_export_fmt = st.selectbox(
                     "回测导出格式",
-                    ["📊 CSV 表格", "📄 PDF 报告"],
+                    ["📊 CSV 表格", "📄 HTML 图表报告"],
                     label_visibility="collapsed",
                     key="bt_export_fmt"
                 )
             with col_bt_dl:
-                if bt_export_fmt == "📄 PDF 报告":
-                    # 生成含图表的HTML报告（比PDF更好看）
-                    try:
-                        import plotly.graph_objects as go_bt
-                        bt = st.session_state.get("last_backtest", {})
-                        eq = bt.get("equity_curve", [100])
-                        trades = bt.get("trades", [])
-
-                        # 权益曲线图
-                        fig_eq = go_bt.Figure()
-                        fig_eq.add_trace(go_bt.Scatter(
-                            y=eq, mode="lines", name="权益曲线",
-                            line=dict(color="#3fb950", width=2),
-                            fill="tozeroy", fillcolor="rgba(63,185,80,0.1)"
-                        ))
-                        fig_eq.update_layout(
-                            title="策略权益曲线",
-                            paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
-                            font=dict(color="#c9d1d9"),
-                            xaxis=dict(gridcolor="#30363d", title="交易次数"),
-                            yaxis=dict(gridcolor="#30363d", title="资金（初始=100）"),
-                            height=350
-                        )
-                        eq_html = fig_eq.to_html(full_html=False, include_plotlyjs=False)
-
-                        # 收益分布图
-                        profits = [t["profit_pct"] for t in trades]
-                        fig_dist = go_bt.Figure()
-                        fig_dist.add_trace(go_bt.Histogram(
-                            x=profits, nbinsx=20,
-                            marker_color="#58a6ff", opacity=0.8, name="收益分布"
-                        ))
-                        fig_dist.update_layout(
-                            title="交易收益分布",
-                            paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
-                            font=dict(color="#c9d1d9"),
-                            xaxis=dict(gridcolor="#30363d", title="收益率(%)"),
-                            yaxis=dict(gridcolor="#30363d", title="次数"),
-                            height=300
-                        )
-                        dist_html = fig_dist.to_html(full_html=False, include_plotlyjs=False)
-
-                        # 交易明细表格
-                        trade_rows = ""
-                        for i, t in enumerate(trades[:50]):
-                            color = "#3fb950" if t["is_profitable"] else "#f85149"
-                            trade_rows += f"""<tr>
-                                <td>{i+1}</td>
-                                <td>{t['buy_date'].strftime('%Y-%m-%d') if hasattr(t['buy_date'],'strftime') else t['buy_date']}</td>
-                                <td>{t['buy_price']:.2f}</td>
-                                <td>{t['sell_date'].strftime('%Y-%m-%d') if hasattr(t['sell_date'],'strftime') else t['sell_date']}</td>
-                                <td>{t['sell_price']:.2f}</td>
-                                <td style="color:{color};font-weight:bold">{t['profit_pct']:+.2f}%</td>
-                            </tr>"""
-
-                        html_report = f"""<!DOCTYPE html>
-<html lang="zh-CN"><head><meta charset="utf-8">
-<title>回测报告 - {bt.get('pattern_name','')}</title>
-<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
-<style>
-* {{box-sizing:border-box;margin:0;padding:0;}}
-body {{background:#0e1117;color:#c9d1d9;font-family:-apple-system,sans-serif;padding:24px;}}
-h1 {{color:#58a6ff;font-size:1.6rem;margin-bottom:8px;}}
-.meta {{color:#8b949e;font-size:0.9rem;margin-bottom:24px;}}
-.section {{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:20px;margin-bottom:20px;}}
-.section h2 {{color:#e6edf3;font-size:1rem;margin-bottom:16px;}}
-.stats {{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}}
-.stat {{background:#0e1117;border:1px solid #30363d;border-radius:8px;padding:12px;text-align:center;}}
-.stat .val {{font-size:1.4rem;font-weight:bold;color:#e6edf3;}}
-.stat .lbl {{font-size:0.8rem;color:#8b949e;margin-top:4px;}}
-.green {{color:#3fb950!important;}} .red {{color:#f85149!important;}}
-table {{width:100%;border-collapse:collapse;font-size:0.85rem;}}
-th {{background:#0e1117;color:#8b949e;padding:8px 10px;text-align:left;border-bottom:1px solid #30363d;}}
-td {{padding:7px 10px;border-bottom:1px solid #21262d;}}
-.disclaimer {{color:#8b949e;font-size:0.8rem;border-top:1px solid #30363d;padding-top:12px;margin-top:20px;}}
-</style></head><body>
-<h1>📈 智图忆市 Pro · 回测报告</h1>
-<div class="meta">策略：{bt.get('pattern_name','')} &nbsp;|&nbsp; 持有天数：{bt.get('holding_days','')} &nbsp;|&nbsp; 生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}</div>
-
-<div class="section">
-<h2>📊 回测统计</h2>
-<div class="stats">
-<div class="stat"><div class="val">{bt.get('total_trades',0)}</div><div class="lbl">交易次数</div></div>
-<div class="stat"><div class="val {'green' if bt.get('win_rate',0)>=50 else 'red'}">{bt.get('win_rate',0):.1f}%</div><div class="lbl">胜率</div></div>
-<div class="stat"><div class="val {'green' if bt.get('avg_profit',0)>=0 else 'red'}">{bt.get('avg_profit',0):+.2f}%</div><div class="lbl">平均收益</div></div>
-<div class="stat"><div class="val">{bt.get('sharpe_ratio',0):.2f}</div><div class="lbl">夏普比率</div></div>
-</div>
-</div>
-
-<div class="section"><h2>📈 权益曲线</h2>{eq_html}</div>
-<div class="section"><h2>📊 收益分布</h2>{dist_html}</div>
-
-<div class="section">
-<h2>📋 交易明细（前50笔）</h2>
-<table><thead><tr><th>#</th><th>买入日期</th><th>买入价</th><th>卖出日期</th><th>卖出价</th><th>收益</th></tr></thead>
-<tbody>{trade_rows}</tbody></table>
-</div>
-
-<div class="disclaimer">⚠️ 本报告仅供学习复盘研究，不构成任何投资建议。股市有风险，投资需谨慎。</div>
-</body></html>"""
-
-                        bt_report_bytes = html_report.encode('utf-8')
+                if bt_export_fmt == "📄 HTML 图表报告":
+                    if st.session_state.get("backtest_html_bytes"):
                         st.download_button(
                             "📥 下载回测报告",
-                            bt_report_bytes,
-                            f"回测报告_{bt.get('pattern_name','')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                            st.session_state["backtest_html_bytes"],
+                            st.session_state.get("backtest_html_name", "回测报告.html"),
                             "text/html",
-                            key="download-backtest-pdf"
+                            key="download-backtest-html"
                         )
-                    except Exception as e:
-                        st.error(f"报告生成失败: {e}")
+                    else:
+                        st.warning("请先运行回测")
                 else:
                     st.download_button(
                         "📥 下载CSV",
