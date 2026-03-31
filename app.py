@@ -908,13 +908,13 @@ def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma
             row=3, col=1
         )
     
-    # 深色模式下自定义 K线 颜色映射（覆盖 Candlestick 的全局配色）
+    # 深色模式下自定义 K线 颜色映射（只更新 Candlestick trace）
     fig.update_traces(
         increasing_line_color=up_color,
         decreasing_line_color=down_color,
         increasing_fillcolor=up_color,
         decreasing_fillcolor=down_color,
-        row=1, col=1
+        selector={"type": "candlestick"}
     )
     
     fig.update_layout(
