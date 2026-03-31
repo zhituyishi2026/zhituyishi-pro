@@ -634,7 +634,7 @@ def find_similar_patterns(df, window, top_n=10):
 # ===================== 策略回测模块 =====================
 def backtest_pattern_strategy(df, pattern_name, holding_days=20):
     """
-    回测指定形态的策略表现
+    回测指定形态的策略表现（带冷却期机制）
     
     参数：
     - df: 包含技术指标的数据框
@@ -642,15 +642,23 @@ def backtest_pattern_strategy(df, pattern_name, holding_days=20):
     - holding_days: 持有天数
     
     返回：回测统计结果字典
+    
+    优化：
+    1. 加入冷却期：形态触发后持有 holding_days 天，期间不再重复触发
+    2. 性能优化：一次遍历完成，避免重复计算
     """
     try:
         if len(df) < holding_days + 20:
             return None
         
-        # 检测所有历史形态出现位置
         trades = []
+        last_trade_end = -1  # 记录上一笔交易的结束索引
         
         for i in range(20, len(df) - holding_days):
+            # 冷却期检查：如果当前索引在上一笔交易的持有期内，跳过
+            if i <= last_trade_end:
+                continue
+            
             window_df = df.iloc[i-20:i].copy()
             patterns = detect_patterns(window_df, window=20)
             
@@ -677,6 +685,9 @@ def backtest_pattern_strategy(df, pattern_name, holding_days=20):
                     "is_profitable": profit > 0,
                     "holding_days": (sell_date - buy_date).days
                 })
+                
+                # 更新冷却期结束位置
+                last_trade_end = sell_idx
         
         if not trades:
             return None
