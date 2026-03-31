@@ -959,8 +959,10 @@ def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matc
         change_pct = (last['close'] - prev['close']) / prev['close'] * 100
 
         # ===== 生成K线图HTML =====
+        df_plot = df.tail(120).reset_index(drop=True).copy()
+        df_plot["date"] = df_plot["date"].dt.strftime("%Y-%m-%d")  # 转字符串，避免HTML导出日期格式问题
         fig_kline = plot_kline_with_pattern(
-            df.tail(120), 0,
+            df_plot, 0,
             show_ma=True, show_vol=True, show_macd=True,
             title=f"{selected_stock} - K线图"
         )
@@ -1010,7 +1012,7 @@ def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matc
                 <div class="stats-grid">
                     <div class="stat-card"><div class="stat-val">{bt.get('total_trades', 0)}</div><div class="stat-label">交易次数</div></div>
                     <div class="stat-card"><div class="stat-val" style="color:#3fb950">{bt.get('win_rate', 0)*100:.1f}%</div><div class="stat-label">胜率</div></div>
-                    <div class="stat-card"><div class="stat-val">{bt.get('avg_return', 0)*100:+.2f}%</div><div class="stat-label">平均收益</div></div>
+                    <div class="stat-card"><div class="stat-val">{bt.get('avg_profit', 0)*100:+.2f}%</div><div class="stat-label">平均收益</div></div>
                     <div class="stat-card"><div class="stat-val">{bt.get('sharpe_ratio', 0):.2f}</div><div class="stat-label">夏普比率</div></div>
                 </div>
                 {equity_html}
