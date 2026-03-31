@@ -85,6 +85,24 @@ STOCK_NAME_MAP = {
     "sh601288": "农业银行",
 }
 
+@st.cache_data(ttl=3600)
+def get_stock_list():
+    """获取沪深全市场股票列表"""
+    try:
+        import akshare as ak
+        df = ak.stock_info_a_code_name()
+        stock_dict = {}
+        for _, row in df.iterrows():
+            code = str(row["code"])
+            name = str(row["name"])
+            if code.startswith("6"):
+                stock_dict[f"sh{code}"] = name
+            else:
+                stock_dict[f"sz{code}"] = name
+        return stock_dict
+    except Exception:
+        return {}
+
 # ===================== 数据源 =====================
 @st.cache_data(ttl=3600)
 def get_sina_data(code, datalen=800):
