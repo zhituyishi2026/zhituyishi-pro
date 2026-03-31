@@ -114,16 +114,18 @@ def get_stock_data(code, datalen=800):
     return None, f"新浪:{err} | AKShare:{err2}"
 
 # ===================== 技术指标 =====================
-def add_indicators(df):
-    """计算技术指标"""
+def add_indicators(df, ma_periods=None):
+    """计算技术指标
+    ma_periods: 自定义均线周期列表，默认 [5, 10, 20, 60]
+    """
     df = df.copy()
     close = df["close"]
     
-    # 均线
-    df["ma5"] = close.rolling(5).mean()
-    df["ma10"] = close.rolling(10).mean()
-    df["ma20"] = close.rolling(20).mean()
-    df["ma60"] = close.rolling(60).mean()
+    # 均线（可自定义）
+    if ma_periods is None:
+        ma_periods = [5, 10, 20, 60]
+    for period in ma_periods:
+        df[f"ma{period}"] = close.rolling(period).mean()
     
     # MACD
     ema12 = close.ewm(span=12).mean()
@@ -924,7 +926,7 @@ def show_stats_panel(matches, window, extend_days):
         win_rate = up_count / len(returns_20d) * 100 if returns_20d else 0
         st.metric("上涨胜率", f"{win_rate:.0f}%", f"盈利 {up_count} 次 / {len(matches)} 次")
 
-def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma=True, show_vol=True, show_macd=True, show_boll=False, show_rsi=False, show_kdj=False, title="K线图", dark_mode=True):
+def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma=True, show_vol=True, show_macd=True, show_boll=False, show_rsi=False, show_kdj=False, title="K线图", dark_mode=True, ma_periods=None):
     """绘制K线图表，默认深色模式"""
     # 固定深色配色，与页面背景统一
     bg_color = "#0e1117"
@@ -988,14 +990,17 @@ def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma
         row=1, col=1
     )
     
-    # 均线
+    # 均线（支持自定义周期）
     if show_ma:
-        for idx, (ma_col, ma_name) in enumerate([("ma5", "MA5"), ("ma10", "MA10"), ("ma20", "MA20")]):
+        if ma_periods is None:
+            ma_periods = [5, 10, 20]
+        for idx, period in enumerate(ma_periods[:3]):  # 最多画3条
+            ma_col = f"ma{period}"
             if ma_col in df.columns:
                 fig.add_trace(
                     go.Scatter(
-                        x=df["date"], y=df[ma_col], name=ma_name, mode="lines",
-                        line=dict(color=ma_colors[idx], width=1.5)
+                        x=df["date"], y=df[ma_col], name=f"MA{period}", mode="lines",
+                        line=dict(color=ma_colors[idx % len(ma_colors)], width=1.5)
                     ),
                     row=1, col=1
                 )
@@ -1118,7 +1123,8 @@ def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matc
             df_plot, 0,
             show_ma=True, show_vol=True, show_macd=True,
             show_boll=True, show_rsi=True, show_kdj=True,
-            title=f"{selected_stock} - K线图"
+            title=f"{selected_stock} - K线图",
+            ma_periods=ma_periods
         )
         kline_html = fig_kline.to_html(full_html=False, include_plotlyjs=False)
 
@@ -1365,8 +1371,14 @@ def main():
         max_history = st.slider("历史数据量", 300, 1000, 800, help="从过去多少天开始搜索")
         
         st.subheader("📐 图表设置")
-        show_ma = st.checkbox("均线 MA5/10/20/60", True)
         show_vol = st.checkbox("成交量", True)
+        with st.expander("📐 指标参数设置"):
+            show_ma = st.checkbox("显示均线", True)
+            ma_periods_str = st.text_input("均线周期", value="5,10,20,60", placeholder="如 5,10,20,60")
+            if show_ma and ma_periods_str:
+                ma_periods = [int(x.strip()) for x in ma_periods_str.split(",") if x.strip().isdigit()]
+            else:
+                ma_periods = [5, 10, 20, 60]
         show_macd = st.checkbox("MACD", True)
         show_boll = st.checkbox("布林带 BOLL", False)
         show_rsi = st.checkbox("RSI", False)
@@ -1444,7 +1456,7 @@ def main():
         st.success(f"✅ 数据加载成功 [{source.upper()}] 共 {len(df)} 根日K线 | {df['date'].min().strftime('%Y-%m-%d')} ~ {df['date'].max().strftime('%Y-%m-%d')}")
         
         # 添加指标
-        df = add_indicators(df)
+        df = add_indicators(df, ma_periods=ma_periods)
         
         # ===== 第一部分：当前行情 =====
         st.markdown("---")
@@ -1473,7 +1485,8 @@ def main():
             df.tail(80), 0,
             show_ma=show_ma, show_vol=show_vol, show_macd=show_macd,
             show_boll=show_boll, show_rsi=show_rsi, show_kdj=show_kdj,
-            title=f"{selected} - 近80日K线"
+            title=f"{selected} - 近80日K线",
+            ma_periods=ma_periods
         )
         st.plotly_chart(fig_current, use_container_width=True)
         
@@ -1552,55 +1565,10 @@ def main():
             else:
                 st.info("未检测到明确形态")
             
-            # ===== 形态胜率对比 =====
-            if patterns:
-                st.markdown("#### 📊 形态胜率对比")
-                selected_patterns = st.multiselect(
-                    "选择形态进行对比",
-                    list(patterns.keys()),
-                    default=list(patterns.keys())[:3] if len(patterns) >= 3 else list(patterns.keys()),
-                    key="pattern_compare_select"
-                )
-                if st.button("📊 对比选中形态", key="pattern_compare_btn"):
-                    if selected_patterns:
-                        with st.spinner("正在对比..."):
-                            compare_results = []
-                            for pname in selected_patterns:
-                                result = backtest_pattern_strategy(df, pname, holding_days=20)
-                                if result:
-                                    compare_results.append({
-                                        "形态": pname,
-                                        "交易次数": result["total_trades"],
-                                        "胜率": f"{result['win_rate']:.1f}%",
-                                        "平均收益": f"{result['avg_profit']:+.2f}%",
-                                        "夏普比率": f"{result['sharpe_ratio']:.2f}"
-                                    })
-                        if compare_results:
-                            st.session_state["pattern_compare_results"] = compare_results
-                
-                if st.session_state.get("pattern_compare_results"):
-                    compare_df = pd.DataFrame(st.session_state["pattern_compare_results"])
-                    st.dataframe(compare_df, use_container_width=True, hide_index=True)
-                    
-                    # 胜率柱状图
-                    win_rates = [float(r["胜率"].replace("%","")) for r in st.session_state["pattern_compare_results"]]
-                    names = [r["形态"] for r in st.session_state["pattern_compare_results"]]
-                    colors = ["#3fb950" if w >= 50 else "#f85149" for w in win_rates]
-                    fig_cmp = go.Figure(go.Bar(x=names, y=win_rates, marker_color=colors))
-                    fig_cmp.update_layout(
-                        title="形态胜率对比",
-                        paper_bgcolor="#0e1117",
-                        plot_bgcolor="#0e1117",
-                        font=dict(color="#c9d1d9"),
-                        xaxis=dict(gridcolor="#30363d"),
-                        yaxis=dict(gridcolor="#30363d", title="胜率(%)"),
-                        height=350
-                    )
-                    st.plotly_chart(fig_cmp, use_container_width=True)
-        
         # ===== 第三部分：形态匹配 =====
         st.markdown("---")
-        st.subheader(f"🔎 历史相似形态匹配 (模板: 近 {pattern_days} 日 → 观察: 后 {extend_days} 日)")
+        st.subheader(f"📊 形态匹配：近 {pattern_days} 日走势 → 未来 {extend_days} 日收益")
+        st.caption("📌 找到历史上最相似的N段走势，看它们后来涨了多少、跌了多少")
         
         matches = []  # 初始化
         with st.spinner("正在匹配历史形态..."):
@@ -1627,7 +1595,8 @@ def main():
                         match_date=m["date"], sim_score=m["similarity"],
                         show_ma=show_ma, show_vol=show_vol, show_macd=show_macd,
                         show_boll=show_boll, show_rsi=show_rsi, show_kdj=show_kdj,
-                        title=f"历史匹配 #{i+1}"
+                        title=f"历史匹配 #{i+1}",
+                        ma_periods=ma_periods
                     )
                     st.plotly_chart(fig_match, use_container_width=True)
                     
@@ -1678,6 +1647,52 @@ def main():
                 st.session_state["last_backtest"] = backtest_result
             else:
                 st.warning("该形态历史数据不足，无法回测")
+        
+        # ===== 形态胜率对比（移至回测区域下方）=====
+        if patterns:
+            st.markdown("#### 📊 形态胜率对比")
+            selected_patterns = st.multiselect(
+                "选择形态进行对比",
+                list(patterns.keys()),
+                default=list(patterns.keys())[:3] if len(patterns) >= 3 else list(patterns.keys()),
+                key="pattern_compare_select"
+            )
+            if st.button("📊 对比选中形态", key="pattern_compare_btn"):
+                if selected_patterns:
+                    with st.spinner("正在对比..."):
+                        compare_results = []
+                        for pname in selected_patterns:
+                            result = backtest_pattern_strategy(df, pname, holding_days=20)
+                            if result:
+                                compare_results.append({
+                                    "形态": pname,
+                                    "交易次数": result["total_trades"],
+                                    "胜率": f"{result['win_rate']:.1f}%",
+                                    "平均收益": f"{result['avg_profit']:+.2f}%",
+                                    "夏普比率": f"{result['sharpe_ratio']:.2f}"
+                                })
+                    if compare_results:
+                        st.session_state["pattern_compare_results"] = compare_results
+            
+            if st.session_state.get("pattern_compare_results"):
+                compare_df = pd.DataFrame(st.session_state["pattern_compare_results"])
+                st.dataframe(compare_df, use_container_width=True, hide_index=True)
+                
+                # 胜率柱状图
+                win_rates = [float(r["胜率"].replace("%","")) for r in st.session_state["pattern_compare_results"]]
+                names = [r["形态"] for r in st.session_state["pattern_compare_results"]]
+                colors_bar = ["#3fb950" if w >= 50 else "#f85149" for w in win_rates]
+                fig_cmp = go.Figure(go.Bar(x=names, y=win_rates, marker_color=colors_bar))
+                fig_cmp.update_layout(
+                    title="形态胜率对比",
+                    paper_bgcolor="#0e1117",
+                    plot_bgcolor="#0e1117",
+                    font=dict(color="#c9d1d9"),
+                    xaxis=dict(gridcolor="#30363d"),
+                    yaxis=dict(gridcolor="#30363d", title="胜率(%)"),
+                    height=350
+                )
+                st.plotly_chart(fig_cmp, use_container_width=True)
         
         # ===== 第五部分：生成完整报告 =====
         st.markdown("---")
