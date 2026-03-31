@@ -1491,43 +1491,116 @@ def main():
                 )
             with col_bt_dl:
                 if bt_export_fmt == "📄 PDF 报告":
-                    # 用reportlab生成简单PDF
+                    # 生成含图表的HTML报告（比PDF更好看）
                     try:
-                        from reportlab.pdfgen import canvas as pdf_canvas
-                        from reportlab.lib.pagesizes import letter
-                        import io as io_module2
-                        buf = io_module2.BytesIO()
-                        c = pdf_canvas.Canvas(buf, pagesize=letter)
-                        w, h = letter
-                        c.setFont("Helvetica-Bold", 16)
-                        c.drawString(50, h-50, "Backtest Report - ZhiTu YiShi Pro")
-                        c.setFont("Helvetica", 11)
-                        y = h - 90
+                        import plotly.graph_objects as go_bt
                         bt = st.session_state.get("last_backtest", {})
-                        lines = [
-                            f"Pattern: {bt.get('pattern_name','')}",
-                            f"Holding Days: {bt.get('holding_days','')}",
-                            f"Total Trades: {bt.get('total_trades','')}",
-                            f"Win Rate: {bt.get('win_rate',0)*100:.1f}%",
-                            f"Avg Return: {bt.get('avg_return',0)*100:.2f}%",
-                            f"Max Return: {bt.get('max_return',0)*100:.2f}%",
-                            f"Sharpe Ratio: {bt.get('sharpe_ratio',0):.2f}",
-                        ]
-                        for line in lines:
-                            c.drawString(50, y, line)
-                            y -= 20
-                        c.save()
-                        buf.seek(0)
-                        pdf_data = buf.getvalue()
+                        eq = bt.get("equity_curve", [100])
+                        trades = bt.get("trades", [])
+
+                        # 权益曲线图
+                        fig_eq = go_bt.Figure()
+                        fig_eq.add_trace(go_bt.Scatter(
+                            y=eq, mode="lines", name="权益曲线",
+                            line=dict(color="#3fb950", width=2),
+                            fill="tozeroy", fillcolor="rgba(63,185,80,0.1)"
+                        ))
+                        fig_eq.update_layout(
+                            title="策略权益曲线",
+                            paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
+                            font=dict(color="#c9d1d9"),
+                            xaxis=dict(gridcolor="#30363d", title="交易次数"),
+                            yaxis=dict(gridcolor="#30363d", title="资金（初始=100）"),
+                            height=350
+                        )
+                        eq_html = fig_eq.to_html(full_html=False, include_plotlyjs=False)
+
+                        # 收益分布图
+                        profits = [t["profit_pct"] for t in trades]
+                        fig_dist = go_bt.Figure()
+                        fig_dist.add_trace(go_bt.Histogram(
+                            x=profits, nbinsx=20,
+                            marker_color="#58a6ff", opacity=0.8, name="收益分布"
+                        ))
+                        fig_dist.update_layout(
+                            title="交易收益分布",
+                            paper_bgcolor="#0e1117", plot_bgcolor="#0e1117",
+                            font=dict(color="#c9d1d9"),
+                            xaxis=dict(gridcolor="#30363d", title="收益率(%)"),
+                            yaxis=dict(gridcolor="#30363d", title="次数"),
+                            height=300
+                        )
+                        dist_html = fig_dist.to_html(full_html=False, include_plotlyjs=False)
+
+                        # 交易明细表格
+                        trade_rows = ""
+                        for i, t in enumerate(trades[:50]):
+                            color = "#3fb950" if t["is_profitable"] else "#f85149"
+                            trade_rows += f"""<tr>
+                                <td>{i+1}</td>
+                                <td>{t['buy_date'].strftime('%Y-%m-%d') if hasattr(t['buy_date'],'strftime') else t['buy_date']}</td>
+                                <td>{t['buy_price']:.2f}</td>
+                                <td>{t['sell_date'].strftime('%Y-%m-%d') if hasattr(t['sell_date'],'strftime') else t['sell_date']}</td>
+                                <td>{t['sell_price']:.2f}</td>
+                                <td style="color:{color};font-weight:bold">{t['profit_pct']:+.2f}%</td>
+                            </tr>"""
+
+                        html_report = f"""<!DOCTYPE html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<title>回测报告 - {bt.get('pattern_name','')}</title>
+<script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+<style>
+* {{box-sizing:border-box;margin:0;padding:0;}}
+body {{background:#0e1117;color:#c9d1d9;font-family:-apple-system,sans-serif;padding:24px;}}
+h1 {{color:#58a6ff;font-size:1.6rem;margin-bottom:8px;}}
+.meta {{color:#8b949e;font-size:0.9rem;margin-bottom:24px;}}
+.section {{background:#161b22;border:1px solid #30363d;border-radius:10px;padding:20px;margin-bottom:20px;}}
+.section h2 {{color:#e6edf3;font-size:1rem;margin-bottom:16px;}}
+.stats {{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px;}}
+.stat {{background:#0e1117;border:1px solid #30363d;border-radius:8px;padding:12px;text-align:center;}}
+.stat .val {{font-size:1.4rem;font-weight:bold;color:#e6edf3;}}
+.stat .lbl {{font-size:0.8rem;color:#8b949e;margin-top:4px;}}
+.green {{color:#3fb950!important;}} .red {{color:#f85149!important;}}
+table {{width:100%;border-collapse:collapse;font-size:0.85rem;}}
+th {{background:#0e1117;color:#8b949e;padding:8px 10px;text-align:left;border-bottom:1px solid #30363d;}}
+td {{padding:7px 10px;border-bottom:1px solid #21262d;}}
+.disclaimer {{color:#8b949e;font-size:0.8rem;border-top:1px solid #30363d;padding-top:12px;margin-top:20px;}}
+</style></head><body>
+<h1>📈 智图忆市 Pro · 回测报告</h1>
+<div class="meta">策略：{bt.get('pattern_name','')} &nbsp;|&nbsp; 持有天数：{bt.get('holding_days','')} &nbsp;|&nbsp; 生成时间：{datetime.now().strftime('%Y-%m-%d %H:%M')}</div>
+
+<div class="section">
+<h2>📊 回测统计</h2>
+<div class="stats">
+<div class="stat"><div class="val">{bt.get('total_trades',0)}</div><div class="lbl">交易次数</div></div>
+<div class="stat"><div class="val {'green' if bt.get('win_rate',0)>=50 else 'red'}">{bt.get('win_rate',0):.1f}%</div><div class="lbl">胜率</div></div>
+<div class="stat"><div class="val {'green' if bt.get('avg_profit',0)>=0 else 'red'}">{bt.get('avg_profit',0):+.2f}%</div><div class="lbl">平均收益</div></div>
+<div class="stat"><div class="val">{bt.get('sharpe_ratio',0):.2f}</div><div class="lbl">夏普比率</div></div>
+</div>
+</div>
+
+<div class="section"><h2>📈 权益曲线</h2>{eq_html}</div>
+<div class="section"><h2>📊 收益分布</h2>{dist_html}</div>
+
+<div class="section">
+<h2>📋 交易明细（前50笔）</h2>
+<table><thead><tr><th>#</th><th>买入日期</th><th>买入价</th><th>卖出日期</th><th>卖出价</th><th>收益</th></tr></thead>
+<tbody>{trade_rows}</tbody></table>
+</div>
+
+<div class="disclaimer">⚠️ 本报告仅供学习复盘研究，不构成任何投资建议。股市有风险，投资需谨慎。</div>
+</body></html>"""
+
+                        bt_report_bytes = html_report.encode('utf-8')
                         st.download_button(
-                            "📥 下载PDF",
-                            pdf_data,
-                            st.session_state.get("backtest_csv_name","回测结果").replace(".csv",".pdf"),
-                            "application/pdf",
+                            "📥 下载回测报告",
+                            bt_report_bytes,
+                            f"回测报告_{bt.get('pattern_name','')}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                            "text/html",
                             key="download-backtest-pdf"
                         )
                     except Exception as e:
-                        st.error(f"PDF生成失败: {e}")
+                        st.error(f"报告生成失败: {e}")
                 else:
                     st.download_button(
                         "📥 下载CSV",
