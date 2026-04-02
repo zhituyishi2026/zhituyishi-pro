@@ -1184,7 +1184,7 @@ def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma
 
     return fig
 
-def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matches=None):
+def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matches=None, pattern_days=20, ma_periods=None):
     """
     生成分析报告（HTML格式，含交互图表）
     返回 bytes 对象
@@ -1860,7 +1860,7 @@ def main():
                     report_bytes = '\n'.join(csv_lines).encode('utf-8-sig')
                 else:
                     # HTML：调用 generate_pdf_report 生成完整HTML
-                    report_bytes = generate_pdf_report(df, selected, patterns, backtest_for_report, matches)
+                    report_bytes = generate_pdf_report(df, selected, patterns, backtest_for_report, matches, pattern_days=pattern_days, ma_periods=ma_periods)
                 
                 if report_bytes:
                     st.session_state["full_report_bytes"] = report_bytes
