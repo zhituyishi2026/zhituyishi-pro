@@ -1130,8 +1130,10 @@ def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma
 
     # 匹配日期虚线分隔（关键点位标记）
     if match_date is not None:
+        # 转换为字符串，避免 Plotly add_vline 的 Timestamp 类型错误
+        match_date_str = str(match_date)[:10] if hasattr(match_date, 'strftime') else str(match_date)
         fig.add_vline(
-            x=match_date, line_dash="dot", line_color="#ff9800",
+            x=match_date_str, line_dash="dot", line_color="#ff9800",
             annotation_text=" 今", annotation_position="top"
         )
         # 匹配段结束后虚线（观察期起点）
@@ -1143,8 +1145,9 @@ def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma
         else:
             end_date = None
         if end_date is not None:
+            end_date_str = str(end_date)[:10]
             fig.add_vline(
-                x=end_date, line_dash="dash", line_color="#58a6ff",
+                x=end_date_str, line_dash="dash", line_color="#58a6ff",
                 annotation_text=" 观察终点", annotation_position="top"
             )
 
