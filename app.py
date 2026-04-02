@@ -44,6 +44,13 @@ st.markdown("""
     .neutral {color:#888;}
     .stDeployButton {display:none !important;}
     footer {visibility:hidden;}
+    /* 滑块主题色 */
+    div.stSlider > div[data-baseweb = "slider"] > div > div > div[type="range"] > div {
+        background: #ff9800 !important;
+    }
+    div.stSlider > div[data-baseweb = "slider"] > div > div > div > div > div {
+        background: #ff9800 !important;
+    }
 </style>
 """, unsafe_allow_html=True)
 
@@ -818,7 +825,11 @@ def show_backtest_results(backtest_result):
         title=f"策略权益曲线 (初始资金: 100)",
         markers=True
     )
-    fig_equity.update_layout(height=400, showlegend=False)
+    fig_equity.update_layout(
+        height=400,
+        showlegend=False,
+        xaxis=dict(tickangle=-45)
+    )
     st.plotly_chart(fig_equity, use_container_width=True)
     
     # 收益分布直方图
@@ -834,7 +845,11 @@ def show_backtest_results(backtest_result):
     fig_hist.add_vline(x=0, line_dash="dash", line_color="gray")
     fig_hist.add_vline(x=backtest_result["avg_profit"], line_dash="solid", 
                        line_color="#1f77b4", annotation_text=f"均值: {backtest_result['avg_profit']:.1f}%")
-    fig_hist.update_layout(height=400, showlegend=False)
+    fig_hist.update_layout(
+        height=400,
+        showlegend=False,
+        xaxis=dict(tickangle=-45)
+    )
     st.plotly_chart(fig_hist, use_container_width=True)
     
     # 交易明细表
@@ -969,14 +984,14 @@ def show_stats_panel(matches, window, extend_days):
         win_rate = up_count / len(returns_20d) * 100 if returns_20d else 0
         st.metric("上涨胜率", f"{win_rate:.0f}%", f"盈利 {up_count} 次 / {len(matches)} 次")
 
-def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma=True, show_vol=True, show_macd=True, show_boll=False, show_rsi=False, show_kdj=False, title="K线图", dark_mode=True, ma_periods=None):
+def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma=True, show_vol=True, show_macd=True, show_boll=False, show_rsi=False, show_kdj=False, title="K线图", dark_mode=True, ma_periods=None, pattern_days=20):
     """绘制K线图表，默认深色模式"""
     # 固定深色配色，与页面背景统一
     bg_color = "#0e1117"
     grid_color = "#30363d"
     text_color = "#c9d1d9"
-    up_color = "#3fb950"      # 上涨 - 绿色
-    down_color = "#f85149"    # 下跌 - 红色
+    up_color = "#f85149"      # 上涨 - 红色
+    down_color = "#3fb950"    # 下跌 - 绿色
     ma_colors = ["#ff9800", "#58a6ff", "#bc8cff"]  # MA5/10/20
 
     # 计算需要的行数
@@ -1113,6 +1128,26 @@ def plot_kline_with_pattern(df, window, match_date=None, sim_score=None, show_ma
                 line=dict(color=color, width=1.5)
             ), row=kdj_row, col=1)
 
+    # 匹配日期虚线分隔（关键点位标记）
+    if match_date is not None:
+        fig.add_vline(
+            x=match_date, line_dash="dot", line_color="#ff9800",
+            annotation_text=" 今", annotation_position="top"
+        )
+        # 匹配段结束后虚线（观察期起点）
+        import pandas as pd
+        if isinstance(match_date, pd.Timestamp):
+            end_date = match_date + pd.Timedelta(days=pattern_days)
+        elif hasattr(match_date, 'date'):
+            end_date = pd.Timestamp(match_date.date()) + pd.Timedelta(days=pattern_days)
+        else:
+            end_date = None
+        if end_date is not None:
+            fig.add_vline(
+                x=end_date, line_dash="dash", line_color="#58a6ff",
+                annotation_text=" 观察终点", annotation_position="top"
+            )
+
     # 深色模式下自定义 K线 颜色映射（只更新 Candlestick trace）
     fig.update_traces(
         increasing_line_color=up_color,
@@ -1167,7 +1202,8 @@ def generate_pdf_report(df, selected_stock, patterns, backtest_result=None, matc
             show_ma=True, show_vol=True, show_macd=True,
             show_boll=True, show_rsi=True, show_kdj=True,
             title=f"{selected_stock} - K线图",
-            ma_periods=ma_periods
+            ma_periods=ma_periods,
+            pattern_days=pattern_days
         )
         kline_html = fig_kline.to_html(full_html=False, include_plotlyjs=False)
 
@@ -1348,8 +1384,14 @@ def main():
     st.markdown('<p class="main-header">🎯 智图忆市 Pro</p>', unsafe_allow_html=True)
     st.markdown('<p class="sub-header">K线形态量化分析 · 历史相似匹配 · 概率统计决策</p>', unsafe_allow_html=True)
     
-    # 免责声明
-    st.warning("⚠️  本工具仅供学习复盘研究，不构成任何投资建议。股市有风险，投资需谨慎。")
+    # 免责声明 - 橙色警告
+    st.markdown(
+        '<div style="background:#7d3c0022; border:1px solid #ff9800; border-radius:6px; padding:8px 12px; margin:4px 0;">'
+        '<span style="color:#ff9800; font-weight:bold;">⚠️  免责声明</span><br>'
+        '<span style="color:#c9d1d9; font-size:0.9rem;">本工具仅供学习复盘研究，不构成任何投资建议。股市有风险，投资需谨慎。</span>'
+        '</div>',
+        unsafe_allow_html=True
+    )
     
     # 侧边栏
     with st.sidebar:
@@ -1430,7 +1472,7 @@ def main():
         st.subheader("🔧 形态匹配设置")
         pattern_days = st.slider("模板窗口天数", 5, 60, 20, help="选取最近多少根K线作为匹配模板")
         extend_days = st.slider("后续观察天数", 5, 60, 20, help="匹配后观察多少天的走势")
-        top_n = st.slider("匹配数量", 3, 20, 10, help="显示最相似的多少个历史形态")
+        top_n = st.slider("匹配数量", 3, 5, 5, help="显示最相似的多少个历史形态")
         max_history = st.slider("历史数据量", 300, 1000, 800, help="从过去多少天开始搜索")
         
         st.subheader("📐 图表设置")
@@ -1439,7 +1481,14 @@ def main():
             show_ma = st.checkbox("显示均线", True)
             ma_periods_str = st.text_input("均线周期", value="5,10,20,60", placeholder="如 5,10,20,60")
             if show_ma and ma_periods_str:
-                ma_periods = [int(x.strip()) for x in ma_periods_str.split(",") if x.strip().isdigit()]
+                try:
+                    raw = [int(x.strip()) for x in ma_periods_str.split(",") if x.strip()]
+                    ma_periods = [p for p in raw if 1 <= p <= 500]
+                    if not ma_periods or len(ma_periods) != len(raw):
+                        st.warning("均线周期格式有误，已使用默认值 [5, 10, 20, 60]")
+                        ma_periods = [5, 10, 20, 60]
+                except Exception:
+                    ma_periods = [5, 10, 20, 60]
             else:
                 ma_periods = [5, 10, 20, 60]
         show_macd = st.checkbox("MACD", True)
@@ -1516,7 +1565,13 @@ def main():
             st.error(f"❌ 数据获取失败，请稍后重试。代码: {code}")
             return
         
-        st.success(f"✅ 数据加载成功 [{source.upper()}] 共 {len(df)} 根日K线 | {df['date'].min().strftime('%Y-%m-%d')} ~ {df['date'].max().strftime('%Y-%m-%d')}")
+        st.markdown(
+            f'<div style="background:#1a5c2022; border:1px solid #3fb950; border-radius:6px; padding:8px 12px; margin:4px 0;">'
+            f'<span style="color:#3fb950; font-weight:bold;">✅ 数据加载成功</span> '
+            f'<span style="color:#8b949e; font-size:0.88rem;">[{source.upper()}] 共 {len(df)} 根日K线 | '
+            f'{df["date"].min().strftime("%Y-%m-%d")} ~ {df["date"].max().strftime("%Y-%m-%d")}</span></div>',
+            unsafe_allow_html=True
+        )
         
         # 添加指标
         df = add_indicators(df, ma_periods=ma_periods)
@@ -1549,7 +1604,8 @@ def main():
             show_ma=show_ma, show_vol=show_vol, show_macd=show_macd,
             show_boll=show_boll, show_rsi=show_rsi, show_kdj=show_kdj,
             title=f"{selected} - 近80日K线",
-            ma_periods=ma_periods
+            ma_periods=ma_periods,
+            pattern_days=pattern_days
         )
         st.plotly_chart(fig_current, use_container_width=True)
         
@@ -1605,12 +1661,26 @@ def main():
             }
             
             if patterns:
+                # ===== 信号冲突检测 =====
+                bullish = [n for n, i in patterns.items() if "看涨" in i.get("信号", "")]
+                bearish = [n for n, i in patterns.items() if "看跌" in i.get("信号", "")]
+                if bullish and bearish:
+                    st.warning(f"⚠️ 信号冲突：同时检测到看涨({', '.join(bullish[:2])}...)和看跌({', '.join(bearish[:2])}...)信号，请谨慎判断")
+                
+                # ===== 形态预警 =====
+                st.markdown(f"""
+                <div style="background:#ff980022; border:1px solid #ff9800; border-radius:6px; padding:8px 12px; margin:8px 0;">
+                    <span style="color:#ff9800; font-weight:bold;">🔔 形态预警</span>
+                    <span style="color:#c9d1d9;"> 检测到 {len(patterns)} 个形态：{', '.join(list(patterns.keys())[:5])}{'...' if len(patterns)>5 else ''}</span>
+                </div>
+                """, unsafe_allow_html=True)
+                
                 cols = st.columns(min(len(patterns), 4))
                 for i, (name, info) in enumerate(patterns.items()):
                     with cols[i % 4]:
                         # 获取颜色配置，默认灰色
                         color = PATTERN_COLORS.get(name, {"bg": "transparent", "border": "#888", "icon": "⚪"})
-                        signal_text_color = "#3fb950" if "看涨" in info["信号"] else "#f85149" if "看跌" in info["信号"] else "#8b949e"
+                        signal_text_color = "#f85149" if "看涨" in info["信号"] else "#3fb950" if "看跌" in info["信号"] else "#8b949e"
                         st.markdown(f"""
                         <div style="background:transparent; padding:10px; border-radius:8px;
                                     border-left:4px solid {color['border']}; margin:4px 0;">
@@ -1659,7 +1729,8 @@ def main():
                         show_ma=show_ma, show_vol=show_vol, show_macd=show_macd,
                         show_boll=show_boll, show_rsi=show_rsi, show_kdj=show_kdj,
                         title=f"历史匹配 #{i+1}",
-                        ma_periods=ma_periods
+                        ma_periods=ma_periods,
+                        pattern_days=pattern_days
                     )
                     st.plotly_chart(fig_match, use_container_width=True)
                     
@@ -1794,13 +1865,25 @@ def main():
                 if report_bytes:
                     st.session_state["full_report_bytes"] = report_bytes
                     st.session_state["full_report_name"] = f"智图忆市完整报告_{selected}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.{'html' if rpt_fmt == '🌐 HTML 完整报告' else 'csv'}"
-                    st.success("✅ 报告生成成功！")
+                    st.markdown(
+                        '<div style="background:#1a5c2022; border:1px solid #3fb950; border-radius:6px; padding:8px 12px; margin:4px 0;">'
+                        '<span style="color:#3fb950; font-weight:bold;">✅ 报告生成成功！</span>'
+                        '</div>',
+                        unsafe_allow_html=True
+                    )
         
         if st.session_state.get("full_report_bytes"):
-            st.download_button("📥 下载完整报告", st.session_state["full_report_bytes"],
-                st.session_state.get("full_report_name","报告.html"), 
-                "text/html" if "html" in st.session_state.get("full_report_name","") else "text/csv", 
-                key="dl-full-report")
+            import base64
+            report_bytes = st.session_state["full_report_bytes"]
+            b64 = base64.b64encode(report_bytes).decode()
+            html_open = f'''
+            <a href="data:text/html;base64,{b64}" target="_blank" 
+               style="display:inline-block; background:#238636; color:white; padding:8px 16px; 
+                      border-radius:6px; text-decoration:none; font-weight:bold;">
+                📥 在新窗口打开报告
+            </a>
+            '''
+            st.markdown(html_open, unsafe_allow_html=True)
     
     else:
         # 初始界面
